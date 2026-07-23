@@ -151,7 +151,7 @@ export function checkAchievements(s: GameState): string[] {
   return fresh;
 }
 
-/** Advance the simulation. Cascades top-down so feeders use pre-tick counts. */
+/** Advance the simulation. Cascades top-down: units formed this step start producing this step. */
 export function step(s: GameState, dtSec: number): void {
   if (dtSec <= 0) return;
   for (let i = TIERS.length - 1; i >= 1; i--) {

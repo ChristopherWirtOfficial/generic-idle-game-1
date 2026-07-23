@@ -21,6 +21,9 @@ export function fmt(n: number): string {
 /** Rates keep one decimal below 1000 so early progress is visible. */
 export function fmtRate(n: number): string {
   if (!isFinite(n)) return "∞";
+  if (n > 0 && n < 1) {
+    return n.toFixed(2).replace(/0$/, "");
+  }
   if (n < 1000) {
     return n.toFixed(1);
   }

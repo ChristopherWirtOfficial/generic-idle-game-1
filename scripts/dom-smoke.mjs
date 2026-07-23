@@ -1,47 +1,103 @@
+// End-to-end jsdom smoke of the flattened artifact: press sky, buy a Mote, verify save.
 import { JSDOM } from "jsdom";
-const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { pretendToBeVisual: true, url: "https://localhost/" });
-globalThis.window = dom.window;
-globalThis.document = dom.window.document;
-Object.defineProperty(globalThis, "navigator", { value: dom.window.navigator, configurable: true });
+import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
+execSync("npx esbuild dist-artifact/generic-idle-game-1.jsx --bundle --external:react --external:react/jsx-runtime --external:react-dom/client --format=esm --platform=node --jsx=automatic --outfile=.domtmp/app.mjs", { stdio: "inherit" });
+
+const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
+  url: "https://example.test/",
+  pretendToBeVisual: true,
+});
+const { window } = dom;
+
+// Node 22: navigator is a getter-only global; must defineProperty.
+Object.defineProperty(globalThis, "navigator", { value: window.navigator, configurable: true });
+globalThis.window = window;
+globalThis.document = window.document;
+globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
+globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
+globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+window.matchMedia = globalThis.matchMedia;
+globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
+window.ResizeObserver = globalThis.ResizeObserver;
+window.HTMLCanvasElement.prototype.getContext = () => null; // Sky degrades gracefully without 2d ctx
+
+const stored = new Map();
+const storage = {
+  async get(k) { return stored.has(k) ? { key: k, value: stored.get(k) } : null; },
+  async set(k, v) { stored.set(k, v); return { key: k, value: v }; },
+  async delete(k) { stored.delete(k); return { key: k, deleted: true }; },
+};
+window.storage = storage;
+globalThis.storage = storage;
+
+const React = await import("react");
 const { createRoot } = await import("react-dom/client");
-const { createElement } = await import("react");
-const { default: App } = await import("../dist-artifact/generic-idle-game-1.bundled.mjs");
+const { default: App } = await import("../.domtmp/app.mjs");
 
-const root = createRoot(document.getElementById("root"));
-root.render(createElement(App));
+const { act } = React;
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-await sleep(400); // past load + a few ticks
+const root = createRoot(window.document.getElementById("root"));
+await act(async () => { root.render(React.createElement(App)); });
+await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
 
-const text = () => document.body.textContent ?? "";
-if (!text().includes("The Button")) throw new Error("app did not mount: " + text().slice(0, 120));
-if (!text().includes("The number is small.")) throw new Error("status line missing");
+const $ = (sel) => window.document.querySelector(sel);
+const $$ = (sel) => [...window.document.querySelectorAll(sel)];
+const text = () => window.document.body.textContent ?? "";
 
-// Press the button five times.
-const btn = [...document.querySelectorAll("button")].find((b) => b.textContent.includes("The Button"));
-for (let i = 0; i < 5; i++) {
-  btn.dispatchEvent(new dom.window.Event("pointerdown", { bubbles: true }));
+// 1. Shell renders: sky press target + tabs.
+const sky = $('[aria-label="Condense stardust"]');
+if (!sky) throw new Error("sky press surface missing");
+for (const label of ["Build", "Improve", "Crunch", "More"]) {
+  if (!$$("nav.tabbar button").some((b) => b.textContent.includes(label))) throw new Error(`tab ${label} missing`);
 }
-await sleep(300);
-const counter = document.querySelector(".counter .big").textContent;
-if (Number(counter) < 5) throw new Error("presses did not register, counter=" + counter);
+if (!$(".dustnum")) throw new Error("dust readout missing");
 
-// Buy a Point Maker (15 points): press until affordable, then click first cost button.
-for (let i = 0; i < 12; i++) btn.dispatchEvent(new dom.window.Event("pointerdown", { bubbles: true }));
-await sleep(200);
-const cost = document.querySelector(".costbtn");
-cost.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
-await sleep(200);
-if (!document.querySelector(".row .count")) throw new Error("generator purchase did not register");
+// 2. Tap the sky 20 times -> ~20 dust, floaty appears, First Light achievement.
+for (let i = 0; i < 20; i++) {
+  await act(async () => {
+    sky.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 }));
+  });
+}
+await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+const dustNow = Number($(".dustnum").textContent.replace(/,/g, ""));
+if (!(dustNow >= 20)) throw new Error(`expected >=20 dust, saw ${$(".dustnum").textContent}`);
+if (!text().includes("First Light")) throw new Error("First Light toast/achievement missing");
 
-// Achievement toast should have queued at some point; check achievements list state via Numbers tab.
-const tabs = [...document.querySelectorAll(".tabbar button")];
-tabs.find((t) => t.textContent === "Numbers").dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
-await sleep(150);
-if (!text().includes("Games named this")) throw new Error("Numbers tab did not render");
-if (!text().includes("You pressed the button.")) throw new Error("achievement not unlocked/listed");
+// 3. Buy slab enabled at 20 dust (Mote costs 15) -> buy -> held 1, dust drops.
+const slab = $(".buyslab");
+if (!slab) throw new Error("buy slab missing");
+if (slab.disabled) throw new Error("buy slab should be affordable at 20 dust");
+await act(async () => { slab.click(); });
+if (!text().includes("1 held")) throw new Error("owned count did not update after buy");
+const dustAfter = Number($(".dustnum").textContent.replace(/,/g, ""));
+if (!(dustAfter < dustNow)) throw new Error("dust did not decrease after purchase");
 
-console.log("dom: mount, tick, press, buy, tabs, achievements — all good. Counter:", document.querySelector(".counter .big")?.textContent ?? "(on numbers tab)");
-root.unmount();
-process.exit(0);
+// 4. Tick advances dust passively (0.6/s from one Mote).
+await act(async () => { await new Promise((r) => setTimeout(r, 2600)); });
+const dustLater = Number($(".dustnum").textContent.replace(/,/g, ""));
+if (!(dustLater > dustAfter)) throw new Error("passive production not ticking");
+
+// 5. Tabs switch panels.
+const improveBtn = $$("nav.tabbar button").find((b) => b.textContent.includes("Improve"));
+await act(async () => { improveBtn.click(); });
+if (!text().includes("Firmer Press")) throw new Error("Improve panel content missing");
+const crunchBtn = $$("nav.tabbar button").find((b) => b.textContent.includes("Crunch"));
+await act(async () => { crunchBtn.click(); });
+if (!text().includes("Big Crunch")) throw new Error("Crunch panel missing");
+const moreBtn = $$("nav.tabbar button").find((b) => b.textContent.includes("More"));
+await act(async () => { moreBtn.click(); });
+if (!text().includes("Sky taps")) throw new Error("More panel missing");
+
+// 6. visibilitychange hidden -> save lands in window.storage under gig1:save2.
+Object.defineProperty(window.document, "visibilityState", { value: "hidden", configurable: true });
+await act(async () => { window.document.dispatchEvent(new window.Event("visibilitychange")); });
+await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+if (!stored.has("gig1:save2")) throw new Error("save not persisted on hide");
+const save = JSON.parse(stored.get("gig1:save2"));
+if (!(save.presses >= 20 && save.tiers[0].bought === 1)) throw new Error("save contents wrong");
+
+await act(async () => { root.unmount(); });
+console.log("dom-smoke: sky press, purchase, ticking, tabs, persistence — all pass");
