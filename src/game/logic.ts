@@ -1,154 +1,168 @@
 import {
-  ACHIEVEMENTS,
-  ACH_MULT_EACH,
-  COST_GROWTH,
-  GENERATORS,
-  PP_BASE,
-  PP_MULT_EACH,
-  UPGRADES,
+  ACHIEVEMENTS, ACH_MULT_EACH, CRUNCH_LOG_START, CRUNCH_LOG_RATE, MILESTONE_FIRST,
+  MILESTONE_MULT, DUST_CLAMP, SINGULARITY_MULT_EACH, TIERS, UPGRADES,
 } from "./constants";
-import type { BuyAmount, GameState, UpgradeDef } from "./types";
+import type { GameState } from "./types";
 
-export function hasUpgrade(s: GameState, id: string): boolean {
-  return s.upgrades.includes(id);
+const upgradeById = new Map(UPGRADES.map((u) => [u.id, u]));
+
+export function achMult(s: GameState): number {
+  return 1 + s.achievements.length * ACH_MULT_EACH;
 }
 
-function ownedUpgrades(s: GameState): UpgradeDef[] {
-  return UPGRADES.filter((u) => s.upgrades.includes(u.id));
+export function singularityMult(s: GameState): number {
+  return 1 + s.singularities * SINGULARITY_MULT_EACH;
 }
 
-/** Multiplier from prestige points + achievements. Applies to everything. */
-export function metaMult(s: GameState): number {
-  return (1 + s.pp * PP_MULT_EACH) * (1 + s.achievements.length * ACH_MULT_EACH);
+/** Level L is reached at MILESTONE_FIRST * (2^L - 1) bought: 25, 75, 175, 375... */
+export function milestoneLevel(s: GameState, i: number): number {
+  const bought = s.tiers[i]?.bought ?? 0;
+  return Math.max(0, Math.floor(Math.log2(bought / MILESTONE_FIRST + 1)));
 }
 
-/** Points per second from all generators, fully multiplied. */
-export function pointsPerSecond(s: GameState): number {
-  let globalMult = 1;
-  let allGensMult = 1;
-  const genMult: number[] = GENERATORS.map(() => 1);
-  for (const u of ownedUpgrades(s)) {
-    const e = u.effect;
-    if (e.kind === "global") globalMult *= e.mult;
-    else if (e.kind === "allGens") allGensMult *= e.mult;
-    else if (e.kind === "gen") genMult[e.gen] = (genMult[e.gen] ?? 1) * e.mult;
+/** Bought count needed for the next milestone level. */
+export function nextMilestoneAt(s: GameState, i: number): number {
+  return MILESTONE_FIRST * (Math.pow(2, milestoneLevel(s, i) + 1) - 1);
+}
+
+/** Multiplier applied to tier i's output (before dust-only bonuses). */
+export function tierMult(s: GameState, i: number): number {
+  let m = Math.pow(MILESTONE_MULT, milestoneLevel(s, i));
+  for (const id of s.upgrades) {
+    const u = upgradeById.get(id);
+    if (!u || u.kind) continue;
+    if (u.target === i || u.target === "global") m *= u.mult;
   }
-  let base = 0;
-  for (let i = 0; i < GENERATORS.length; i++) {
-    const def = GENERATORS[i];
-    if (!def) continue;
-    base += (s.gens[i] ?? 0) * def.baseRate * (genMult[i] ?? 1);
-  }
-  return base * globalMult * allGensMult * metaMult(s);
+  return m;
 }
 
-/** Points per press. */
+/** Rate at which tier i emits its product (units/sec), all bonuses included. */
+export function tierOutput(s: GameState, i: number): number {
+  const def = TIERS[i];
+  const st = s.tiers[i];
+  if (!def || !st) return 0;
+  let out = st.count * def.baseRate * tierMult(s, i);
+  if (i === 0) out *= achMult(s) * singularityMult(s);
+  return out;
+}
+
+export function dustPerSecond(s: GameState): number {
+  return tierOutput(s, 0);
+}
+
 export function pressValue(s: GameState): number {
-  let mult = 1;
-  for (const u of ownedUpgrades(s)) {
-    if (u.effect.kind === "press") mult *= u.effect.mult;
+  let v = 1;
+  let pct = 0;
+  for (const id of s.upgrades) {
+    const u = upgradeById.get(id);
+    if (!u || u.target !== "press") continue;
+    if (u.kind === "pressPercent") pct += 0.02;
+    else if (!u.kind) v *= u.mult;
   }
-  const pct = hasUpgrade(s, "pct1") ? pointsPerSecond(s) * 0.01 : 0;
-  return 1 * mult * metaMult(s) + pct;
+  v *= achMult(s) * singularityMult(s);
+  return v + pct * dustPerSecond(s);
 }
 
-export function press(s: GameState): GameState {
-  const gain = pressValue(s);
-  return earn({ ...s, presses: s.presses + 1 }, gain);
+export function hasAutoPress(s: GameState): boolean {
+  return s.upgrades.includes("u-autopress");
 }
 
-function earn(s: GameState, amount: number): GameState {
-  return {
-    ...s,
-    points: s.points + amount,
-    runEarned: s.runEarned + amount,
-    everEarned: s.everEarned + amount,
-  };
+export function press(s: GameState): number {
+  const v = pressValue(s);
+  s.dust += v; s.lifetimeDust += v; s.runDust += v;
+  s.presses += 1;
+  return v;
 }
 
-/** Cost of the next single unit of generator i. */
-export function genCost(s: GameState, i: number): number {
-  const def = GENERATORS[i];
-  if (!def) return Infinity;
-  return def.baseCost * Math.pow(COST_GROWTH, s.gens[i] ?? 0);
+export function tierCost(s: GameState, i: number, n = 1): number {
+  const def = TIERS[i];
+  const st = s.tiers[i];
+  if (!def || !st || n <= 0) return Infinity;
+  const g = def.costGrowth;
+  const first = def.baseCost * Math.pow(g, st.bought);
+  return first * (Math.pow(g, n) - 1) / (g - 1);
 }
 
-/** Cost of the next n units (geometric series). */
-export function genBulkCost(s: GameState, i: number, n: number): number {
-  const first = genCost(s, i);
-  const r = COST_GROWTH;
-  return (first * (Math.pow(r, n) - 1)) / (r - 1);
+export function maxAffordable(s: GameState, i: number): number {
+  const def = TIERS[i];
+  const st = s.tiers[i];
+  if (!def || !st) return 0;
+  const g = def.costGrowth;
+  const first = def.baseCost * Math.pow(g, st.bought);
+  if (s.dust < first) return 0;
+  return Math.floor(Math.log(s.dust * (g - 1) / first + 1) / Math.log(g));
 }
 
-/** Largest n affordable with current points. */
-export function genMaxAffordable(s: GameState, i: number): number {
-  const first = genCost(s, i);
-  const r = COST_GROWTH;
-  if (s.points < first) return 0;
-  const n = Math.floor(Math.log((s.points * (r - 1)) / first + 1) / Math.log(r));
-  return Math.max(0, n);
+export function buyTier(s: GameState, i: number, n: number): boolean {
+  const st = s.tiers[i];
+  if (!st) return false;
+  const cost = tierCost(s, i, n);
+  if (n <= 0 || !Number.isFinite(cost) || s.dust < cost) return false;
+  s.dust -= cost;
+  st.count += n;
+  st.bought += n;
+  return true;
 }
 
-export function resolveBuyCount(s: GameState, i: number, amount: BuyAmount): number {
-  if (amount === "max") return Math.max(1, genMaxAffordable(s, i));
-  return amount;
+export function buyUpgrade(s: GameState, id: string): boolean {
+  const u = upgradeById.get(id);
+  if (!u || s.upgrades.includes(id) || s.dust < u.cost) return false;
+  s.dust -= u.cost;
+  s.upgrades.push(id);
+  return true;
 }
 
-export function buyGen(s: GameState, i: number, amount: BuyAmount): GameState {
-  const n = resolveBuyCount(s, i, amount);
-  const cost = genBulkCost(s, i, n);
-  if (s.points < cost || n < 1) return s;
-  const gens = s.gens.slice();
-  gens[i] = (gens[i] ?? 0) + n;
-  return { ...s, points: s.points - cost, gens };
+/** Highest tier index the player has ever been able to see (owned, or next after highest owned). */
+export function visibleTiers(s: GameState): number {
+  let highest = -1;
+  for (let i = TIERS.length - 1; i >= 0; i--) {
+    const st = s.tiers[i];
+    if (st && (st.count > 0 || st.bought > 0)) { highest = i; break; }
+  }
+  return Math.min(TIERS.length, highest + 2);
 }
 
-export function buyUpgrade(s: GameState, id: string): GameState {
-  const def = UPGRADES.find((u) => u.id === id);
-  if (!def || hasUpgrade(s, id) || s.points < def.cost) return s;
-  return { ...s, points: s.points - def.cost, upgrades: [...s.upgrades, id] };
+export function pendingSingularities(s: GameState): number {
+  const lg = s.lifetimeDust > 0 ? Math.log10(s.lifetimeDust) : 0;
+  const total = Math.max(0, Math.floor((lg - CRUNCH_LOG_START) * CRUNCH_LOG_RATE));
+  return Math.max(0, total - s.singularities);
 }
 
-/** Prestige points pending for this run. */
-export function pendingPP(s: GameState): number {
-  return Math.floor(Math.sqrt(s.runEarned / PP_BASE));
+export function doCrunch(s: GameState): number {
+  const gain = pendingSingularities(s);
+  if (gain <= 0) return 0;
+  s.singularities += gain;
+  s.crunches += 1;
+  s.dust = 0;
+  s.runDust = 0;
+  s.tiers = TIERS.map(() => ({ count: 0, bought: 0 }));
+  s.upgrades = [];
+  return gain;
 }
 
-export function doPrestige(s: GameState): GameState {
-  const gained = pendingPP(s);
-  if (gained < 1) return s;
-  return {
-    ...s,
-    points: 0,
-    runEarned: 0,
-    gens: GENERATORS.map(() => 0),
-    upgrades: [],
-    pp: s.pp + gained,
-    resets: s.resets + 1,
-  };
-}
-
-/** Achievement check: returns the same array reference when nothing changed. */
 export function checkAchievements(s: GameState): string[] {
-  let next: string[] | null = null;
+  const fresh: string[] = [];
   for (const a of ACHIEVEMENTS) {
-    if (!s.achievements.includes(a.id) && a.test(s)) {
-      next = next ?? s.achievements.slice();
-      next.push(a.id);
+    if (!s.achievements.includes(a.id) && a.check(s)) {
+      s.achievements.push(a.id);
+      fresh.push(a.id);
     }
   }
-  return next ?? s.achievements;
+  return fresh;
 }
 
-/** One tick. Applies production, auto-press, achievements, and clock fields. */
-export function step(s: GameState, dtMs: number, now: number): GameState {
-  const dt = dtMs / 1000;
-  let next = earn(s, pointsPerSecond(s) * dt);
-  if (hasUpgrade(next, "auto1")) {
-    next = earn(next, pressValue(next) * dt);
+/** Advance the simulation. Cascades top-down so feeders use pre-tick counts. */
+export function step(s: GameState, dtSec: number): void {
+  if (dtSec <= 0) return;
+  for (let i = TIERS.length - 1; i >= 1; i--) {
+    const below = s.tiers[i - 1];
+    if (!below) continue;
+    below.count += tierOutput(s, i) * dtSec;
   }
-  next = { ...next, playedMs: s.playedMs + dtMs, lastSeen: now };
-  const ach = checkAchievements(next);
-  if (ach !== next.achievements) next = { ...next, achievements: ach };
-  return next;
+  const gained = dustPerSecond(s) * dtSec;
+  s.dust += gained; s.lifetimeDust += gained; s.runDust += gained;
+  if (!Number.isFinite(s.dust) || s.dust > DUST_CLAMP) s.dust = DUST_CLAMP;
+  if (!Number.isFinite(s.lifetimeDust) || s.lifetimeDust > DUST_CLAMP) s.lifetimeDust = DUST_CLAMP;
+  if (!Number.isFinite(s.runDust) || s.runDust > DUST_CLAMP) s.runDust = DUST_CLAMP;
+  for (const st of s.tiers) if (!Number.isFinite(st.count) || st.count > DUST_CLAMP) st.count = DUST_CLAMP;
 }

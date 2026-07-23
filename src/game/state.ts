@@ -1,19 +1,18 @@
-import { GENERATORS, SAVE_VERSION } from "./constants";
+import { TIERS } from "./constants";
 import type { GameState } from "./types";
 
-export function initialState(now: number): GameState {
+export function freshState(now = Date.now()): GameState {
   return {
-    v: SAVE_VERSION,
-    points: 0,
-    runEarned: 0,
-    everEarned: 0,
-    presses: 0,
-    gens: GENERATORS.map(() => 0),
+    dust: 0,
+    lifetimeDust: 0,
+    runDust: 0,
+    tiers: TIERS.map(() => ({ count: 0, bought: 0 })),
     upgrades: [],
     achievements: [],
-    pp: 0,
-    resets: 0,
-    playedMs: 0,
+    singularities: 0,
+    crunches: 0,
+    presses: 0,
+    startedAt: now,
     lastSeen: now,
   };
 }

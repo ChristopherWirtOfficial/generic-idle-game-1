@@ -1,60 +1,59 @@
-/** The entire save. One object, no cleverness. */
-export interface GameState {
-  /** Save schema version. */
-  v: number;
-  /** Current spendable points. */
-  points: number;
-  /** Points earned this run (resets on prestige). */
-  runEarned: number;
-  /** Points earned ever (never resets). */
-  everEarned: number;
-  /** Button presses, ever. */
-  presses: number;
-  /** Owned count per generator, indexed like GENERATORS. */
-  gens: number[];
-  /** Ids of purchased upgrades (this run). */
-  upgrades: string[];
-  /** Ids of unlocked achievements (kept forever). */
-  achievements: string[];
-  /** Prestige points (kept forever). */
-  pp: number;
-  /** Times reset. */
-  resets: number;
-  /** Active play time in ms. */
-  playedMs: number;
-  /** Last tick / save timestamp, epoch ms. */
-  lastSeen: number;
-}
-
-export type BuyAmount = 1 | 10 | "max";
-
-export type TabId = "buy" | "improve" | "reset" | "numbers";
-
-export interface GeneratorDef {
+export interface TierDef {
+  id: string;
   name: string;
+  plural: string;
+  /** What this tier does, in the game's voice. */
   blurb: string;
   baseCost: number;
+  costGrowth: number;
+  /** Units of the tier below (or dust, for tier 0) produced per second per unit. */
   baseRate: number;
+  /** Hue anchor for UI (H in HSL). */
+  hue: number;
 }
-
-export type UpgradeKind =
-  | { kind: "press"; mult: number }
-  | { kind: "global"; mult: number }
-  | { kind: "gen"; gen: number; mult: number }
-  | { kind: "allGens"; mult: number }
-  | { kind: "pctPress" }
-  | { kind: "autoPress" };
 
 export interface UpgradeDef {
   id: string;
   name: string;
   blurb: string;
   cost: number;
-  effect: UpgradeKind;
+  /** Tier index this multiplies, or "press" | "global". */
+  target: number | "press" | "global";
+  mult: number;
+  /** Special behaviors. */
+  kind?: "pressPercent" | "autoPress";
 }
 
 export interface AchievementDef {
   id: string;
   name: string;
-  test: (s: GameState) => boolean;
+  blurb: string;
+  check: (s: GameState) => boolean;
+}
+
+export interface TierState {
+  /** Total owned, including produced fractions. */
+  count: number;
+  /** Bought by hand — drives milestones. */
+  bought: number;
+}
+
+export interface GameState {
+  dust: number;
+  lifetimeDust: number;
+  runDust: number;
+  tiers: TierState[];
+  upgrades: string[];
+  achievements: string[];
+  singularities: number;
+  crunches: number;
+  presses: number;
+  startedAt: number;
+  lastSeen: number;
+}
+
+export interface OfflineReport {
+  awayMs: number;
+  creditedMs: number;
+  dustGained: number;
 }
