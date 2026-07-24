@@ -3,6 +3,7 @@ import { hue } from "./Rail";
 import { SCENARIOS } from "../game/constants";
 import { prog, scen, tableauLevels, threshScale } from "../game/logic";
 import { fmt, fmtDuration } from "../game/format";
+import { STAT_NAME, StatGlyph } from "./vocab";
 import type { GameState, Stat } from "../game/types";
 
 interface Props {
@@ -72,7 +73,7 @@ export function MorePanel({ state, onSwitch, onErase, onCheatLevel, onCheatHotst
             <span className="ctier" style={{ color: hue(i) }}>{i + 1}</span>
             {(["val", "spd", "cst"] as const).map((stat) => (
               <span key={stat} className="cgroup">
-                <span className="cstat">{stat}</span>
+                <span className="cstat"><StatGlyph stat={stat} />{STAT_NAME[stat]}</span>
                 <button className="cbtn" aria-label={`cheat ${i + 1} ${stat} -`} onClick={() => onCheatLevel(i, stat, -1)}>−</button>
                 <span className="cl">{tableauLevels(state, i, stat)}</span>
                 <button className="cbtn" aria-label={`cheat ${i + 1} ${stat} +`} onClick={() => onCheatLevel(i, stat, 1)}>+</button>

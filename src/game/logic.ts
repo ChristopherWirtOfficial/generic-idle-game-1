@@ -2,7 +2,7 @@ import {
   BASE_DRAW, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY, NUM_CLAMP,
   RARITY_LEVELS, RARITY_WEIGHT, scenarioById,
 } from "./constants";
-import type { Card, DrawOffer, GameState, ScenarioDef, ScenarioProgress, Stat, TierState } from "./types";
+import type { BuyAmount, Card, DrawOffer, GameState, ScenarioDef, ScenarioProgress, Stat, TierState } from "./types";
 
 export function scen(s: GameState): ScenarioDef {
   return scenarioById(s.scenario);
@@ -39,6 +39,44 @@ export function milestoneLevel(s: GameState, i: number): number {
 
 export function nextMilestoneAt(s: GameState, i: number): number {
   return scen(s).milestoneFirst * (Math.pow(2, milestoneLevel(s, i) + 1) - 1);
+}
+
+/** Hand-bought count at the milestone already crossed (0 before the first). */
+export function prevMilestoneAt(s: GameState, i: number): number {
+  return scen(s).milestoneFirst * (Math.pow(2, milestoneLevel(s, i)) - 1);
+}
+
+/**
+ * How far this tier has travelled along its current milestone span, in [0,1].
+ * Drives the outer arc: milestone progress is a position you can see, not a
+ * fraction you have to parse.
+ */
+export function milestoneProgress(s: GameState, i: number): number {
+  const st = s.tiers[i];
+  if (!st) return 0;
+  const prev = prevMilestoneAt(s, i);
+  const next = nextMilestoneAt(s, i);
+  const span = next - prev;
+  if (!(span > 0)) return 0;
+  return Math.max(0, Math.min(1, (st.bought - prev) / span));
+}
+
+/** Units still needed to cross the next milestone (never less than 1). */
+export function toMilestone(s: GameState, i: number): number {
+  const st = s.tiers[i];
+  if (!st) return 1;
+  return Math.max(1, nextMilestoneAt(s, i) - st.bought);
+}
+
+/**
+ * Resolve a purchase quantity to a unit count. Never returns 0: an unaffordable
+ * quantity still has to price itself, because seeing the price while broke is
+ * how you form the goal.
+ */
+export function amountCount(s: GameState, i: number, a: BuyAmount): number {
+  if (a === "max") return Math.max(1, maxAffordable(s, i));
+  if (a === "milestone") return toMilestone(s, i);
+  return a;
 }
 
 /** Value paid per unit per cycle, all multipliers in. */

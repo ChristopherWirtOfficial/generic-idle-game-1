@@ -4,10 +4,10 @@ import { applyPick, buyTier, doReset, prog, rollDraw, scen, scoreRate, step, swi
 import { applyOffline, eraseSave, loadGame, persist } from "./game/save";
 import { freshState } from "./game/state";
 import { fmt, fmtRate } from "./game/format";
-import type { Card, DrawOffer, GameState, OfflineReport, Stat } from "./game/types";
+import type { BuyAmount, Card, DrawOffer, GameState, OfflineReport, Stat } from "./game/types";
 import { CSS } from "./ui/styles";
 import { Rail } from "./ui/Rail";
-import { BuyPanel, type BuyAmount } from "./ui/BuyPanel";
+import { QuantityBar } from "./ui/QuantityBar";
 import { ResetPanel } from "./ui/ResetPanel";
 import { CardsOverlay } from "./ui/CardsOverlay";
 import { MorePanel } from "./ui/MorePanel";
@@ -21,7 +21,7 @@ export default function App(): JSX.Element {
 
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<TabId>("buy");
-  const [sel, setSel] = useState(0);
+  const [open, setOpen] = useState<number | null>(null);
   const [amount, setAmount] = useState<BuyAmount>(1);
   const [offer, setOffer] = useState<DrawOffer | null>(null);
   const [offline, setOffline] = useState<OfflineReport | null>(null);
@@ -111,8 +111,6 @@ export default function App(): JSX.Element {
   }, [ready, bump]);
 
   // ---- handlers
-  const onSelect = useCallback((i: number) => { setSel(i); setTab("buy"); }, []);
-
   const onBuy = useCallback((i: number, n: number) => {
     const s = stateRef.current;
     if (!s) return;
@@ -132,7 +130,7 @@ export default function App(): JSX.Element {
     doReset(s);
     setOffer(null);
     setTab("buy");
-    setSel(0);
+    setOpen(null);
     void persist(s);
     bump();
   }, [bump]);
@@ -141,7 +139,7 @@ export default function App(): JSX.Element {
     const s = stateRef.current;
     if (!s) return;
     switchScenario(s, id);
-    setSel(0);
+    setOpen(null);
     setTab("buy");
     void persist(s);
     bump();
@@ -179,7 +177,7 @@ export default function App(): JSX.Element {
     stateRef.current = freshState();
     beatenShown.current = new Set();
     setOffer(null);
-    setSel(0);
+    setOpen(null);
     setTab("buy");
     bump();
   }, [bump]);
@@ -201,7 +199,7 @@ export default function App(): JSX.Element {
     <div className="app">
       <style>{CSS}</style>
       <div className="display">
-        <Rail state={s} sel={sel} onSelect={onSelect} tickedAt={tickedAt} />
+        <Rail state={s} open={open} setOpen={setOpen} amount={amount} onBuy={onBuy} tickedAt={tickedAt} />
         <div className="scoreblock">
           <div className="scorenum">{fmt(s.score)}</div>
           <div className="scoresub">
@@ -210,18 +208,20 @@ export default function App(): JSX.Element {
           </div>
         </div>
       </div>
-      <div className="deck" style={{ position: "relative" }}>
+      <div className="dock" style={{ position: "relative" }}>
         {banner && <div className="banner" style={{ pointerEvents: "none" }}>{banner}</div>}
-        {tab === "buy" && (
-          <BuyPanel state={s} sel={sel} setSel={setSel} amount={amount} setAmount={setAmount} onBuy={onBuy} />
+        {tab !== "buy" && (
+          <div className="deck">
+            {tab === "reset" && <ResetPanel state={s} onReset={onReset} />}
+            {tab === "more" && (
+              <MorePanel
+                state={s} onSwitch={onSwitch} onErase={onErase}
+                onCheatLevel={onCheatLevel} onCheatHotstart={onCheatHotstart} onCheatFlywheel={onCheatFlywheel}
+              />
+            )}
+          </div>
         )}
-        {tab === "reset" && <ResetPanel state={s} onReset={onReset} />}
-        {tab === "more" && (
-          <MorePanel
-            state={s} onSwitch={onSwitch} onErase={onErase}
-            onCheatLevel={onCheatLevel} onCheatHotstart={onCheatHotstart} onCheatFlywheel={onCheatFlywheel}
-          />
-        )}
+        <QuantityBar amount={amount} setAmount={setAmount} />
         <TabBar tab={tab} setTab={setTab} />
       </div>
       {offer && <CardsOverlay offer={offer} onDone={onCeremonyDone} />}

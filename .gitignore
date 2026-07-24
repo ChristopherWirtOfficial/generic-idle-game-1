@@ -2,6 +2,8 @@ node_modules
 dist
 dist-artifact
 .testtmp
+.domtmp
+.simtmp
 .serena
 *.log
 .DS_Store

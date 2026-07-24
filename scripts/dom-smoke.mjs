@@ -69,22 +69,57 @@ const root = createRoot($("#root"));
 await (async () => { root.render(React.createElement(App)); })();
 await sleep(500);
 
-check("rail renders seeded nodes", $$(".node").length >= 2, `${$$(".node").length}`);
+check("rail renders seeded rows", $$(".row").length >= 2, `${$$(".row").length}`);
 check("score shows the seed", $(".scorenum")?.textContent === "1.00M", $(".scorenum")?.textContent);
 check("run subtotal visible", byText(".scoresub span", "run") !== undefined);
 
-const boughtBefore = $(".kv b")?.textContent ?? "";
-const buySlab = byText(".slab", "BUY");
-check("buy slab present & enabled", buySlab !== undefined && !buySlab.disabled);
-buySlab.click();
+// Every row carries a dial with both arcs: cycle (rAF-owned) and milestone.
+check("row dial has cycle + milestone arcs", $(".row .carc") !== null && $(".row .marc") !== null);
+
+// The quantity rail is global and offers buy-to-milestone alongside the rest.
+const segs = $$(".seg button").map((b) => b.textContent);
+check("quantity rail offers x1/x10/max/next milestone", segs.length === 4 && segs.includes("max") && segs.includes("next milestone"), segs.join("|"));
+
+// Buying is inline on the row — no tab switch, no panel.
+const plate = document.querySelector('[aria-label="buy 1 tier 1"]');
+check("tier 1 has an inline buy plate", plate !== null && !plate.disabled);
+check("plate shows an affordability fill", plate?.querySelector(".fill") !== null);
+plate.click();
 await sleep(250);
-check("buy raises bought by hand", ($(".kv b")?.textContent ?? "") !== boughtBefore, $(".kv b")?.textContent);
-check("buy spends score", $(".scorenum")?.textContent !== "1.00M", $(".scorenum")?.textContent);
+check("inline buy spends score", $(".scorenum")?.textContent !== "1.00M", $(".scorenum")?.textContent);
+
+// Bloom the row open: four quantities, each with its count and its cost.
+const heads = $$(".row .head");
+heads[heads.length - 1].click();
+await sleep(300);
+check("row blooms open", $(".row.open") !== null);
+const qs = $$(".row.open .q");
+check("bloom shows four quantities", qs.length === 4, `${qs.length}`);
+check("each quantity shows count and cost", qs.every((q) => q.querySelector(".n") && q.querySelector(".amt")));
+check("bloom marks the selected quantity", $(".row.open .q.mode") !== null);
+check("bloom shows hand-bought progress", byText(".row.open .ms", "by hand")?.textContent.includes("31"), byText(".row.open .ms", "by hand")?.textContent);
+check("bloom shows stat chips", $$(".row.open .chip").length === 3, `${$$(".row.open .chip").length}`);
+check("bloom reveals cycle time", $(".row.open .cyc")?.textContent.includes("s"), $(".row.open .cyc")?.textContent);
+
+// ->milestone prices exactly the gap to the next hand-bought milestone (31 -> 75).
+byText(".seg button", "next milestone").click();
+await sleep(200);
+check("next milestone prices the gap to the milestone", document.querySelector('[aria-label="buy 44 tier 1"]') !== null);
+byText(".seg button", "×1").click();
+await sleep(150);
+heads[heads.length - 1].click();
+await sleep(300);
+check("row collapses again", $(".row.open") === null);
 
 byText(".tabbar button", "RESET").click();
 await sleep(200);
 check("reset tab: thresholds met highlight", $$(".threshrow.met").length >= 2, `${$$(".threshrow.met").length}`);
 check("reset tab: histogram bars from pool", $$(".hrow").length >= 3, `${$$(".hrow").length}`);
+// The bar is a span in a non-flex parent: without display:block it silently
+// renders at 0x0 and the whole strategy surface goes invisible.
+const hbar = $(".hrow .hbar");
+check("histogram bars are laid out, not inline", getComputedStyle(hbar).display === "block", getComputedStyle(hbar).display);
+check("histogram bars carry a width", /%/.test(hbar?.style.width ?? ""), hbar?.style.width);
 const resetSlab = byText(".slab", "RESET");
 check("reset slab enabled at 2 picks", resetSlab !== undefined && !resetSlab.disabled && resetSlab.textContent.includes("2 picks"), resetSlab?.textContent);
 

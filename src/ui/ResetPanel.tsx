@@ -2,11 +2,10 @@ import { hue } from "./Rail";
 import { BANK_CAP } from "../game/constants";
 import { liquidationValue, pickThresholds, picksFor, poolEntries } from "../game/logic";
 import { fmt } from "../game/format";
+import { STAT_NAME, StatGlyph } from "./vocab";
 import type { GameState } from "../game/types";
 
 interface Props { state: GameState; onReset: () => void; }
-
-const STAT_LABEL = { val: "val", spd: "spd", cst: "cst" } as const;
 
 export function ResetPanel({ state, onReset }: Props): JSX.Element {
   const liq = liquidationValue(state);
@@ -34,7 +33,7 @@ export function ResetPanel({ state, onReset }: Props): JSX.Element {
           {entries.length === 0 && <div className="kv"><span>nothing yet — buy, cross milestones, watch wheels</span></div>}
           {entries.slice(0, 10).map((e) => (
             <div key={`${e.tier}-${e.stat}`} className="hrow">
-              <span className="hlabel">{e.tier + 1} {STAT_LABEL[e.stat]}</span>
+              <span className="hlabel">{e.tier + 1} <StatGlyph stat={e.stat} />{STAT_NAME[e.stat]}</span>
               <span className="hbarwrap">
                 <span className="hbar" style={{ width: `${Math.max(4, (e.w / maxW) * 100)}%`, background: hue(e.tier) }} />
               </span>

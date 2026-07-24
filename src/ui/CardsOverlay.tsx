@@ -1,14 +1,25 @@
 import { useState } from "react";
 import { hue } from "./Rail";
 import { fmt } from "../game/format";
-import type { Card, DrawOffer } from "../game/types";
+import { STAT_EFFECT, STAT_NAME, StatGlyph } from "./vocab";
+import type { Card, DrawOffer, Stat } from "../game/types";
 
 interface Props { offer: DrawOffer; onDone: (picked: Card[]) => void; }
 
-function cardText(c: Card): { big: string; small: string; tc: string | null } {
-  if (c.kind === "flywheel") return { big: "FLYWHEEL", small: "every reset: all wheels complete once", tc: null };
-  if (c.kind === "hotstart") return { big: `START +${c.levels}`, small: "runs begin holding more tier 1", tc: null };
-  return { big: `${(c.tier ?? 0) + 1} ${c.stat} +${c.levels}`, small: `tier ${(c.tier ?? 0) + 1} ${c.stat === "cst" ? "costs down" : c.stat === "spd" ? "cycles faster" : "pays more"}`, tc: hue(c.tier) };
+function cardText(c: Card): { big: string; small: string; tc: string | null; stat: Stat | null } {
+  if (c.kind === "flywheel") {
+    return { big: "FLYWHEEL", small: "every reset: all wheels complete once", tc: null, stat: null };
+  }
+  if (c.kind === "hotstart") {
+    return { big: `START +${c.levels}`, small: "runs begin holding more tier 1", tc: null, stat: null };
+  }
+  const stat = c.stat ?? "val";
+  return {
+    big: `${(c.tier ?? 0) + 1} ${STAT_NAME[stat]} +${c.levels}`,
+    small: `tier ${(c.tier ?? 0) + 1} ${STAT_EFFECT[stat]}`,
+    tc: hue(c.tier),
+    stat,
+  };
 }
 
 export function CardsOverlay({ offer, onDone }: Props): JSX.Element {
@@ -32,7 +43,7 @@ export function CardsOverlay({ offer, onDone }: Props): JSX.Element {
                 onClick={() => setTaken((cur) => (cur.includes(idx) ? cur.filter((x) => x !== idx) : [...cur, idx]))}
               >
                 <span className="band" />
-                <span className="big">{t.big}</span>
+                <span className="big">{t.stat && <StatGlyph stat={t.stat} />}{t.big}</span>
                 <span className="small">{t.small}</span>
               </button>
             );

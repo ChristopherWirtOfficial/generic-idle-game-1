@@ -27,8 +27,11 @@ process (07). Read docs/00-INDEX.md before making design-level changes.
 
 - `src/game/` — pure logic, no React. `constants.ts` is the tuning surface
   (scenario constitutions live here). `logic.ts` is the whole economy.
-- `src/ui/` — instrument-skin components. `Rail.tsx` owns wheel arcs via rAF
+- `src/ui/` — instrument-skin components. `Rail.tsx` is the primary surface:
+  self-contained generator rows that buy inline, with wheel arcs driven by rAF
   (economy ticks at 10Hz; animation extrapolates at display refresh).
+  `vocab.tsx` is the shared label/glyph vocabulary — stats are named in words
+  (speed/value/cost), each with a drawn glyph, never emoji.
 - `scripts/` — flatten pipeline, pacing sim, smoke tests, jsdom e2e.
 - Saves: `window.storage` key `gig1:save3`, hardened revive in `save.ts`.
 
@@ -66,5 +69,6 @@ process (07). Read docs/00-INDEX.md before making design-level changes.
 Opening: first buy ~10s, then cycle-locked cadence. Tier 2 ~2m, first reset
 ~5m45, tier 3 ~28m, tiers 4–6 across 51–91m via push runs, s1 goal 1e15 ≈
 6–8 veteran-hours. Known wants: s3–s5 goals set with margin, not fully
-sim-verified; CUSTOM scenario is a locked stub; chrome voice is deliberately
-restrained pending a joint art-direction pass.
+sim-verified; CUSTOM scenario is a locked stub. Art-direction pass 01 is done
+(the self-contained row — see docs/06); the rest of the chrome is still
+deliberately restrained.

@@ -29,6 +29,9 @@ export interface ScenarioDef {
 
 export type Stat = "val" | "spd" | "cst";
 
+/** Purchase quantities. "milestone" buys exactly up to the next hand-bought milestone. */
+export type BuyAmount = 1 | 10 | "max" | "milestone";
+
 export interface Card {
   kind: "stat" | "hotstart" | "flywheel";
   tier: number; // -1 for exotics

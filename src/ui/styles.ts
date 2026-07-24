@@ -8,6 +8,7 @@ export const CSS = String.raw`
   --dim: #8B8E96;
   --faint: #565A63;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2, .9, .25, 1);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
@@ -24,41 +25,131 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .app { height: 100dvh; display: flex; flex-direction: column; max-width: 560px; margin: 0 auto; }
 
 /* ---------- Display: the rail ---------- */
-.display { flex: 11 1 0; min-height: 0; display: flex; flex-direction: column; padding: 10px 14px 4px; }
+.display { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; padding: 10px 14px 4px; }
 .rail { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; overflow: hidden; }
-.node {
-  display: flex; align-items: center; gap: 12px;
-  padding: 2px 4px; border-radius: 10px;
-  min-height: 0; flex: 1 1 0; max-height: 64px;
-  text-align: left;
+.link { flex: none; width: 2px; height: 10px; margin-left: 29px; background: var(--tc, var(--faint)); opacity: 0.28; border-radius: 2px; }
+
+/* A row is self-contained: dial, readout, and its own actuator. */
+.row {
+  --tc: hsl(var(--tch));
+  flex: 0 1 64px; min-height: 46px;
+  display: grid; grid-template-columns: 1fr auto; align-items: start;
+  border-radius: 12px; border: 1px solid transparent;
+  transition: flex-basis 0.24s var(--ease), background 0.24s var(--ease), border-color 0.24s var(--ease);
 }
-.node.sel { background: #FFFFFF0A; }
-.node .wheel { flex: none; position: relative; width: 40px; height: 40px; }
-.node .wheel svg { display: block; }
-.node .wheel .ghost { stroke: #FFFFFF1A; }
-.node .wheel .arc { transition: none; }
-.node.glowing .wheel { filter: drop-shadow(0 0 6px var(--tc)); }
-.node .ncount { font-size: 16px; font-weight: 700; letter-spacing: 0.02em; min-width: 76px; }
-.node .nmeta { flex: 1; font-size: 11px; color: var(--dim); line-height: 1.5; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.node .nmeta b { color: var(--text); font-weight: 400; }
-.node .ntag { flex: none; font-size: 11px; color: var(--tc); }
-.node.locked { opacity: 0.4; }
-.node.addnode { color: var(--dim); }
-.node.addnode .ncount { font-weight: 400; font-size: 13px; color: var(--dim); }
-.node.addnode .ntag { color: var(--faint); }
-.link { flex: none; width: 2px; height: 8px; margin-left: 23px; background: var(--tc, var(--faint)); opacity: 0.35; }
+.row.open { flex: 0 0 auto; background: #FFFFFF06; border-color: hsl(var(--tch) / 0.22); }
+
+.head { grid-column: 1; display: grid; grid-template-columns: 44px 1fr; column-gap: 12px; align-items: center;
+  padding: 6px 0 6px 8px; height: 100%; min-width: 0; text-align: left; }
+.row.open .head { height: 64px; }
+.idcol { position: relative; width: 44px; height: 44px; }
+.idcol svg { display: block; position: absolute; inset: 0; width: 44px; height: 44px; }
+.txt { min-width: 0; }
+.count { display: block; font-size: 21px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1; }
+.row.empty .count { color: var(--faint); }
+.row.slot .count { color: var(--faint); font-weight: 400; font-size: 15px; }
+.flow { display: block; font-size: 11.5px; color: var(--dim); line-height: 1.45; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flow .pay, .flow .rate { color: var(--text); }
+.flow .tgt { color: var(--tc); }
+.flow .sep { color: var(--faint); padding: 0 3px; }
+
+/* Outer arc: milestone progress. Inner arc: the cycle, owned by rAF. */
+.mtrack { fill: none; stroke: #FFFFFF0F; stroke-width: 2; }
+.marc { fill: none; stroke: var(--tc); stroke-width: 2; opacity: 0.62;
+  transform: rotate(-90deg); transform-origin: 22px 22px; }
+.ctrack { fill: none; stroke: #FFFFFF12; stroke-width: 3; }
+.carc { fill: none; stroke: var(--tc); stroke-width: 3; stroke-linecap: round;
+  transform: rotate(-90deg); transform-origin: 22px 22px; }
+.carc.frozen { stroke: var(--faint); opacity: 0.8; }
+.idcol.glow .carc { stroke-dasharray: 1 1 !important; }
+.idcol.glow { filter: drop-shadow(0 0 6px var(--tc)); }
+.dash { fill: none; stroke: var(--faint); stroke-width: 2; stroke-dasharray: 0.055 0.105; opacity: 0.7; }
+.hub { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: var(--tc); letter-spacing: 0.02em; }
+.row.empty .hub, .row.slot .hub { color: var(--faint); }
+.cyc { position: absolute; top: 45px; left: -8px; right: -8px; text-align: center;
+  font-size: 9.5px; letter-spacing: 0.06em; color: var(--faint);
+  opacity: 0; transform: translateY(-3px); transition: opacity 0.2s var(--ease) 0.06s, transform 0.2s var(--ease) 0.06s; }
+.row.open .cyc { opacity: 1; transform: none; }
+
+/* The resting actuator. Its fill is how close the score is to affording it. */
+.buy { grid-column: 2; position: relative; overflow: hidden;
+  width: 132px; height: 46px; margin: 9px 8px 0 10px; flex: none;
+  border-radius: 11px; background: var(--card); border: 1px solid var(--edge);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  transition: width 0.24s var(--ease), opacity 0.14s var(--ease), margin 0.24s var(--ease), transform 0.12s var(--ease); }
+.buy .fill { position: absolute; top: 0; bottom: 0; left: 0; background: hsl(var(--tch) / 0.11);
+  box-shadow: 1px 0 0 hsl(var(--tch) / 0.45); }
+.buy .lab { position: relative; font-size: 9.5px; letter-spacing: 0.14em; color: var(--faint); }
+.buy .amt { position: relative; font-size: 15px; font-weight: 600; color: var(--faint); letter-spacing: 0.01em; }
+.buy.can { border-color: hsl(var(--tch) / 0.42); background: hsl(var(--tch) / 0.14); }
+.buy.can .lab { color: var(--tc); }
+.buy.can .amt { color: var(--text); }
+.buy.can:active { transform: translateY(1px); }
+.row.empty .buy.can { border-color: hsl(var(--tch) / 0.72); }
+.row.slot .buy { border-style: dashed; }
+.row.open .buy { width: 0; margin-left: 0; margin-right: 0; opacity: 0; pointer-events: none; }
+
+/* The bloom: four real quantities, each priced with its count. */
+.body { grid-column: 1 / -1; display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.24s var(--ease); }
+.row.open .body { grid-template-rows: 1fr; }
+.bodyin { min-height: 0; overflow: hidden; }
+.bodypad { padding: 2px 8px 10px; }
+.qgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.q { position: relative; overflow: hidden; height: 64px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--edge);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.q .fill { position: absolute; top: 0; bottom: 0; left: 0; background: hsl(var(--tch) / 0.11);
+  box-shadow: 1px 0 0 hsl(var(--tch) / 0.45); }
+.q .lab { position: relative; font-size: 9.5px; letter-spacing: 0.14em; color: var(--faint); }
+.q .n { position: relative; font-size: 10.5px; color: var(--faint); margin-top: 2px; }
+.q .amt { position: relative; font-size: 15px; font-weight: 600; color: var(--faint); margin-top: 2px; }
+.q.can { border-color: hsl(var(--tch) / 0.42); background: hsl(var(--tch) / 0.14); }
+.q.can .lab { color: var(--tc); }
+.q.can .n { color: var(--dim); }
+.q.can .amt { color: var(--text); }
+.q.can:active { transform: translateY(1px); }
+.q.mode { border-color: hsl(var(--tch) / 0.58); }
+.q.mode .lab { color: var(--tc); }
+.q.mode::after { content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 22px; height: 2px; border-radius: 0 0 2px 2px; background: var(--tc); }
+
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 9px; }
+.ms { font-size: 10.5px; color: var(--faint); letter-spacing: 0.04em; white-space: nowrap; }
+.ms b { color: var(--dim); font-weight: 400; }
+.ms .goal { color: var(--tc); }
+
+/* When the whole chain is on screen there is no headroom for the flow line. */
+.rail.tight .row:not(.open) { flex: 0 1 50px; }
+.rail.tight .row:not(.open) .flow { display: none; }
 
 .scoreblock { flex: none; padding: 8px 4px 6px; border-top: 1px solid var(--edge); }
 .scorenum { font-size: clamp(30px, 9vw, 42px); font-weight: 700; letter-spacing: 0.01em; }
 .scoresub { font-size: 12px; color: var(--dim); display: flex; justify-content: space-between; gap: 12px; }
 .scoresub b { color: var(--text); font-weight: 400; }
 
-/* ---------- Deck ---------- */
+/* ---------- Dock: optional panel, then two fixed rails ---------- */
+.dock { flex: none; display: flex; flex-direction: column; min-height: 0; }
 .deck {
-  flex: 10 1 0; min-height: 0; display: flex; flex-direction: column;
+  flex: 1 1 auto; min-height: 0; max-height: 52vh; display: flex; flex-direction: column;
   background: var(--panel); border-top: 1px solid var(--edge);
   border-radius: 16px 16px 0 0;
 }
+
+/* Rail one: the global quantity. Every row prices whatever is selected here. */
+.qbar { flex: none; padding: 8px 14px; background: #101216; border-top: 1px solid var(--edge); }
+.seg { display: flex; background: var(--card); border: 1px solid var(--edge); border-radius: 11px; padding: 3px; gap: 2px; }
+.seg button { flex: 1; text-align: center; font-size: 11.5px; letter-spacing: 0.04em; color: var(--dim);
+  padding: 8px 0; border-radius: 8px; white-space: nowrap; }
+/* "next milestone" is words, not a glyph — give it the room words need. */
+.seg button.wide { flex: 1.9; }
+.seg button.on { background: var(--text); color: var(--bg); font-weight: 600; }
+
+/* ---------- Stat vocabulary: drawn glyphs, never emoji ---------- */
+.sglyph { width: 9px; height: 9px; flex: none; vertical-align: -0.5px; margin-right: 4px;
+  stroke: currentColor; fill: none; }
+.sglyph .solid { fill: currentColor; }
 .panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .scrollarea { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px 8px; }
 
@@ -76,9 +167,12 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .mbar { height: 5px; border-radius: 99px; background: #0D0F12; border: 1px solid var(--edge); overflow: hidden; margin: 4px 0 2px; }
 .mfill { height: 100%; background: var(--tc); opacity: 0.85; transition: width 0.2s; }
 
-.chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 0 2px; }
-.chip { font-size: 11px; padding: 3px 8px; border: 1px solid var(--edge); border-radius: 99px; color: var(--dim); }
-.chip.lit { color: var(--tc); border-color: var(--tc); }
+.chips { display: flex; gap: 6px; }
+.chip { font-size: 10px; letter-spacing: 0.06em; color: var(--faint); border: 1px solid var(--edge);
+  border-radius: 99px; padding: 3px 8px; white-space: nowrap; }
+.chip b { color: var(--dim); font-weight: 400; }
+.chip.lit { border-color: hsl(var(--tch) / 0.3); }
+.chip.lit b { color: var(--tc); }
 
 .buyrow { flex: none; padding: 6px 14px 10px; display: flex; flex-direction: column; gap: 8px; }
 .amounts { display: flex; gap: 8px; justify-content: center; }
@@ -100,9 +194,11 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .threshrow.met b { color: #9ED89E; }
 .hist { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; }
 .hrow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--dim); }
-.hrow .hlabel { flex: none; width: 56px; text-align: right; }
+.hrow .hlabel { flex: none; width: 74px; text-align: right; white-space: nowrap; }
 .hrow .hbarwrap { flex: 1; height: 8px; background: #0D0F12; border-radius: 99px; overflow: hidden; }
-.hrow .hbar { height: 100%; border-radius: 99px; }
+/* display:block is load-bearing: .hbar is a span in a non-flex parent, so
+   without it the element stays inline and drops width/height entirely. */
+.hrow .hbar { display: block; height: 100%; border-radius: 99px; }
 .resetslab { border-color: var(--text); }
 .resetslab .sv { letter-spacing: 0.12em; }
 
