@@ -125,14 +125,16 @@ export function step(s: GameState, dtSec: number): void {
     const st = s.tiers[i];
     const def = defs[i];
     if (!st || !def) continue;
+    const held = Math.floor(st.count);
+    // A wheel with nothing on it does not turn. Its phase is heat it keeps:
+    // frozen through resets and idle stretches, resumed the moment you own one.
+    if (held < 1) continue;
     const T = period(s, i);
     const adv = dtSec / T;
     const total = st.phase + adv;
     const completions = Math.floor(total);
     st.phase = total - completions;
     if (completions <= 0) continue;
-    const held = Math.floor(st.count);
-    if (held < 1) { continue; }
     st.cycles += completions;
     // Sculpting: watching a wheel turn writes speed weight — but only while it is
     // still a wheel. Once it graduates to glow, the spigot closes itself.
@@ -205,6 +207,12 @@ export function liquidationValue(s: GameState): number {
     else virtual[def.target] = (virtual[def.target] ?? 0) + pay;
   }
   return gained;
+}
+
+/** A tier you have ever bought (this scenario) or currently hold. */
+export function tierKnown(s: GameState, i: number): boolean {
+  const st = s.tiers[i];
+  return (prog(s).everBought[i] ?? 0) > 0 || (st !== undefined && (st.bought > 0 || st.count >= 1));
 }
 
 /** Visible tiers: one past the deepest ever bought in this scenario. */

@@ -129,7 +129,7 @@ export function applyOffline(s: GameState, awayMs: number): OfflineReport {
   if (trickle > 0) prog(s).totalScore += trickle;
   for (let i = 0; i < s.tiers.length; i++) {
     const st = s.tiers[i];
-    if (!st) continue;
+    if (!st || Math.floor(st.count) < 1) continue; // unowned wheels stay frozen
     const T = scenarioById(s.scenario).tiers[i]?.basePeriod ?? 1;
     st.phase = (st.phase + (awayMs / 1000) / T) % 1;
   }

@@ -48,6 +48,21 @@ console.log("— cycles: one formula, no piecewise —");
   close(b.runScore / a.runScore, 1 + LEVEL_POTENCY * 24, 0.02, "×19 speed pays ×19 across the glow boundary");
 }
 
+console.log("— unowned wheels freeze —");
+{
+  const s = freshState(0);
+  s.tiers[0]!.phase = 0.2;
+  step(s, 3);
+  close(s.tiers[0]!.phase, 0.2, 1e-9, "empty tier holds its phase through step");
+  s.tiers[0]!.count = 1;
+  step(s, 2.5);
+  close(s.tiers[0]!.phase, 0.7, 1e-9, "owned tier resumes from the frozen phase");
+  const o = freshState(0);
+  o.tiers[0]!.phase = 0.4;
+  applyOffline(o, BANK_MS);
+  close(o.tiers[0]!.phase, 0.4, 1e-9, "empty tier holds its phase through time away");
+}
+
 console.log("— costs are bought-only —");
 {
   const s = freshState(0);

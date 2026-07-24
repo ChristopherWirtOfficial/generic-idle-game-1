@@ -43,6 +43,14 @@ globalThis.storage = window.storage = {
   async list() { return { keys: [...store.keys()] }; },
 };
 
+// Deterministic ceremony: the app draws with Math.random; seed it so the fan
+// is stable run-to-run (flaky before: a HOTSTART pick could pay out pre-assert).
+let rngSeed = 7;
+Math.random = () => {
+  rngSeed = (rngSeed * 1103515245 + 12345) & 0x7fffffff;
+  return rngSeed / 0x7fffffff;
+};
+
 const React = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { default: App } = await import("../.domtmp/app.mjs");
@@ -86,8 +94,10 @@ check("ceremony veil appears", $(".veil") !== null);
 check("cash-out shown", byText(".liq", "cashed out") !== undefined);
 const cards = $$(".playcard");
 check("three cards fanned", cards.length === 3, `${cards.length}`);
-cards[0].click();
-cards[1].click();
+const statCards = cards.filter((c) => !c.textContent.includes("START") && !c.textContent.includes("FLYWHEEL"));
+check("stat cards to pick", statCards.length >= 2, `${statCards.length}`);
+statCards[0].click();
+statCards[1].click();
 await sleep(100);
 const keep = byText(".donebtn", "KEEP");
 check("KEEP arms after taking picks", keep !== undefined && !keep.disabled);
@@ -110,10 +120,9 @@ const saved = store.get("gig1:save3");
 check("hidden tab persists a save", saved !== undefined);
 if (saved) {
   const parsed = JSON.parse(saved);
-  // Wheels keep turning during the test's real seconds; warm ≠ frozen. Tier 1's
-  // 5s period can wrap past 1.0 inside the test window, so assert on tier 2:
-  // seeded at 0.25 with a 10s period, it can only have advanced, never wrapped.
-  check("phase survived the reset (still warm)", parsed.tiers[1].phase > 0.3 && parsed.tiers[1].phase < 1, `${parsed.tiers[1].phase}`);
+  // Warm means held, not spinning: tier 2 is seeded unowned at phase 0.25 and
+  // must come out at exactly 0.25 — never advanced, never zeroed by the reset.
+  check("unowned wheel holds its phase exactly", parsed.tiers[1].phase === 0.25, `${parsed.tiers[1].phase}`);
   check("picks recorded in progress", parsed.progress.s1.picks === 2, `${parsed.progress.s1.picks}`);
   check("pool cleared by reset", Object.keys(parsed.pool).length <= 1, JSON.stringify(parsed.pool));
 }

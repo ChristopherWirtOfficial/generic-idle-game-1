@@ -43,6 +43,9 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .node .nmeta b { color: var(--text); font-weight: 400; }
 .node .ntag { flex: none; font-size: 11px; color: var(--tc); }
 .node.locked { opacity: 0.4; }
+.node.addnode { color: var(--dim); }
+.node.addnode .ncount { font-weight: 400; font-size: 13px; color: var(--dim); }
+.node.addnode .ntag { color: var(--faint); }
 .link { flex: none; width: 2px; height: 8px; margin-left: 23px; background: var(--tc, var(--faint)); opacity: 0.35; }
 
 .scoreblock { flex: none; padding: 8px 4px 6px; border-top: 1px solid var(--edge); }
