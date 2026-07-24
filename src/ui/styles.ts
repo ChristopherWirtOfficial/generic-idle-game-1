@@ -32,7 +32,9 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 /* A row is self-contained: dial, readout, and its own actuator. */
 .row {
   --tc: hsl(var(--tch));
-  flex: 0 1 64px; min-height: 46px;
+  /* min-height must clear the buy plate's own box (9px margin + 46px tall),
+     or a shrunk row lets the plate overflow into the rail's hidden overflow. */
+  flex: 0 1 64px; min-height: 56px;
   display: grid; grid-template-columns: 1fr auto; align-items: start;
   border-radius: 12px; border: 1px solid transparent;
   transition: flex-basis 0.24s var(--ease), background 0.24s var(--ease), border-color 0.24s var(--ease);
@@ -121,7 +123,7 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .ms .goal { color: var(--tc); }
 
 /* When the whole chain is on screen there is no headroom for the flow line. */
-.rail.tight .row:not(.open) { flex: 0 1 50px; }
+.rail.tight .row:not(.open) { flex: 0 1 56px; }
 .rail.tight .row:not(.open) .flow { display: none; }
 
 .scoreblock { flex: none; padding: 8px 4px 6px; border-top: 1px solid var(--edge); }
