@@ -1,7 +1,12 @@
 # Generic Idle Game 1 — v3
 
-A management idle game shipped as a single Claude artifact (React .jsx). The
-repo is the source of truth; the artifact is compiled output.
+A management idle game: React + Vite + TypeScript, deployed to GitHub Pages.
+
+It began life as a single pasted Claude artifact, and for a while the repo
+carried a bespoke "flatten" pipeline that concatenated every module into one
+dependency-free .jsx. That target is gone — it was the only reason the project
+could not take a dependency, and it was costing more than it returned. Package
+manager is **pnpm**; tests are **Vitest**.
 
 ## Full design context
 
@@ -14,14 +19,17 @@ process (07). Read docs/00-INDEX.md before making design-level changes.
 
 ## Commands
 
-- `npm run dev` — vite dev server
-- `npm test` — typecheck + logic smoke + jsdom end-to-end
-- `npm run sim [hours] [resetPolicy] [scenario]` — pacing simulation (greedy
+- `pnpm dev` — vite dev server
+- `pnpm test` — Vitest (economy in node, app e2e in jsdom). `pnpm test:watch`
+  to iterate.
+- `pnpm build` — typecheck + vite build. This is what CI deploys.
+- `pnpm sim [hours] [resetPolicy] [scenario]` — pacing simulation (greedy
   player, veteran auto-picks, chain/push alternation). Run this after ANY
   economy change; it has caught every degenerate loop so far.
-- `npm run ship` — build, flatten to `dist-artifact/generic-idle-game-1.jsx`,
-  SSR + dom smoke. The flattened file is what gets pasted/shipped as the
-  artifact. `scripts/flatten.mjs` holds the FILES dependency order.
+
+pnpm settings live in `pnpm-workspace.yaml`, NOT in a `pnpm` field in
+package.json (pnpm 11 stopped reading that). esbuild is allow-listed there for
+postinstall; without it vite and vitest install but cannot run.
 
 ## Architecture
 
@@ -32,7 +40,10 @@ process (07). Read docs/00-INDEX.md before making design-level changes.
   (economy ticks at 10Hz; animation extrapolates at display refresh).
   `vocab.tsx` is the shared label/glyph vocabulary — stats are named in words
   (speed/value/cost), each with a drawn glyph, never emoji.
-- `scripts/` — flatten pipeline, pacing sim, smoke tests, jsdom e2e.
+- `scripts/` — the pacing sim only (`pacing-sim.mjs` + `sim-core.ts`, which
+  re-exports `src/game` so the sim runs the real economy, never a copy).
+- Tests live beside the code: `src/game/*.test.ts` (node), `src/ui/*.test.tsx`
+  (jsdom, via a `@vitest-environment` docblock).
 - Saves: `window.storage` key `gig1:save3`, hardened revive in `save.ts`.
 
 ## Design constitution (violate nothing here without discussion)

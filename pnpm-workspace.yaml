@@ -1,0 +1,5 @@
+# pnpm 11 reads settings from here, not from a "pnpm" field in package.json.
+# esbuild's postinstall fetches its platform binary; vite and vitest both sit on
+# top of it, so without this the toolchain installs but cannot run.
+allowBuilds:
+  esbuild: true
