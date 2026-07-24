@@ -4,3 +4,10 @@ dist
 .serena
 *.log
 .DS_Store
+
+# stray preview scratch from earlier design sessions
+__preview_*.html
+_preview-*.html
+
+# agent worktrees + local settings
+.claude/

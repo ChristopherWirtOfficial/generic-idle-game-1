@@ -1,3 +1,5 @@
+import type { Decimal } from "./num";
+
 /** A tier's constitution within a scenario. Raw content: tiers are numbers. */
 export interface TierDef {
   /** Base seconds per cycle before speed multipliers. */
@@ -41,11 +43,13 @@ export interface Card {
 }
 
 export interface TierState {
-  count: number;
+  /** Held units. Decimal: produced by the chain, so it has no ceiling. */
+  count: Decimal;
+  /** Hand-bought. Native: bounded by what a player can actually buy. */
   bought: number;
   /** Cycle phase in [0,1). Persists through reset. */
   phase: number;
-  /** Completions witnessed this run (drives speed pool weight). */
+  /** Completions witnessed this run. */
   cycles: number;
 }
 
@@ -57,16 +61,16 @@ export interface ScenarioProgress {
   flywheel: boolean;
   resets: number;
   picks: number;
-  bestRun: number;
-  totalScore: number;
+  bestRun: Decimal;
+  totalScore: Decimal;
   beaten: boolean;
   everBought: number[]; // per-tier max bought ever (drives visibility)
 }
 
 export interface GameState {
   scenario: string;
-  score: number;
-  runScore: number;
+  score: Decimal;
+  runScore: Decimal;
   tiers: TierState[];
   progress: Record<string, ScenarioProgress>;
   /** Pool weights accrued this run: pool[tier][stat]. */
@@ -81,11 +85,11 @@ export interface GameState {
 export interface DrawOffer {
   cards: Card[];
   picks: number;
-  liquidated: number;
+  liquidated: Decimal;
 }
 
 export interface OfflineReport {
   awayMs: number;
   bankedGained: number;
-  trickle: number;
+  trickle: Decimal;
 }

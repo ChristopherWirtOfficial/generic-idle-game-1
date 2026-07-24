@@ -2,6 +2,7 @@ import {
   BASE_DRAW, COST_PER_DOUBLING, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY,
   NUM_CLAMP, POOL_DAMP, RARITY_LEVELS, RARITY_WEIGHT, SPEED_PER_SEC, VALUE_PER_MILESTONE, scenarioById,
 } from "./constants";
+import { D, Decimal, ZERO, isFiniteD } from "./num";
 import type { BuyAmount, Card, DrawOffer, GameState, ScenarioDef, ScenarioProgress, Stat, TierState } from "./types";
 
 export function scen(s: GameState): ScenarioDef {
@@ -13,7 +14,7 @@ export function prog(s: GameState): ScenarioProgress {
   if (!p) {
     p = {
       tableau: {}, hotstart: 0, flywheel: false,
-      resets: 0, picks: 0, bestRun: 0, totalScore: 0, beaten: false,
+      resets: 0, picks: 0, bestRun: ZERO, totalScore: ZERO, beaten: false,
       everBought: scen(s).tiers.map(() => 0),
     };
     s.progress[s.scenario] = p;
@@ -68,7 +69,7 @@ export function milestoneProgress(s: GameState, i: number): number {
  */
 export function needsUnlock(s: GameState, i: number): boolean {
   const st = s.tiers[i];
-  return !st || Math.floor(st.count) < 1;
+  return !st || st.count.floor().lt(1);
 }
 
 /** Units still needed to cross the next threshold (never less than 1). */
@@ -118,27 +119,31 @@ export function period(s: GameState, i: number): number {
 }
 
 /** Average output per second (used for display and the offline trickle). */
-export function throughput(s: GameState, i: number): number {
+export function throughput(s: GameState, i: number): Decimal {
   const st = s.tiers[i];
-  if (!st || st.count < 1) return 0;
-  return (Math.floor(st.count) * unitValue(s, i)) / period(s, i);
+  if (!st || st.count.lt(1)) return ZERO;
+  return st.count.floor().times(unitValue(s, i)).div(period(s, i));
 }
 
 /** Score per second from tier 0, averaged over its cycle. */
-export function scoreRate(s: GameState): number {
+export function scoreRate(s: GameState): Decimal {
   const def = scen(s).tiers[0];
-  return def && def.target === -1 ? throughput(s, 0) : 0;
+  return def && def.target === -1 ? throughput(s, 0) : ZERO;
 }
 
-/** Prices are integers: what the slab shows is exactly what it charges. */
-export function tierCost(s: GameState, i: number, n = 1): number {
+/**
+ * Price of the next n units. Geometric series, in Decimal because g^bought
+ * outruns float64 at a few thousand hand-buys on the deep tiers.
+ * Prices are integers: what the plate shows is exactly what it charges.
+ */
+export function tierCost(s: GameState, i: number, n = 1): Decimal {
   const def = scen(s).tiers[i];
   const st = s.tiers[i];
-  if (!def || !st || n <= 0) return Infinity;
+  if (!def || !st || n <= 0) return D(Infinity);
   const g = def.costGrowth;
-  const first = (def.baseCost / tableauMult(s, i, "cost")) * Math.pow(g, st.bought);
-  const total = (first * (Math.pow(g, n) - 1)) / (g - 1);
-  return Number.isFinite(total) ? Math.ceil(total) : Infinity;
+  const first = D(def.baseCost).div(tableauMult(s, i, "cost")).times(Decimal.pow(g, st.bought));
+  const total = first.times(Decimal.pow(g, n).minus(1)).div(g - 1);
+  return total.ceil();
 }
 
 export function maxAffordable(s: GameState, i: number): number {
@@ -146,11 +151,15 @@ export function maxAffordable(s: GameState, i: number): number {
   const st = s.tiers[i];
   if (!def || !st) return 0;
   const g = def.costGrowth;
-  const first = (def.baseCost / tableauMult(s, i, "cost")) * Math.pow(g, st.bought);
-  if (s.score < Math.ceil(first)) return 0;
-  let n = Math.max(1, Math.floor(Math.log((s.score * (g - 1)) / first + 1) / Math.log(g)));
-  while (n > 0 && tierCost(s, i, n) > s.score) n--;
-  while (tierCost(s, i, n + 1) <= s.score) n++;
+  const first = D(def.baseCost).div(tableauMult(s, i, "cost")).times(Decimal.pow(g, st.bought));
+  if (s.score.lt(first.ceil())) return 0;
+  // n = log_g(score·(g−1)/first + 1), then walked to exactness because the
+  // per-unit ceil means the closed form can be off by one either way.
+  // affordGeometricSeries is purpose-built for exactly this; we still walk it
+  // because tierCost ceils the total, which the closed form does not.
+  let n = Math.max(1, Math.floor(Decimal.affordGeometricSeries(s.score, first, g, 0).toNumber()));
+  while (n > 0 && tierCost(s, i, n).gt(s.score)) n--;
+  while (tierCost(s, i, n + 1).lte(s.score)) n++;
   return n;
 }
 
@@ -158,11 +167,11 @@ export function buyTier(s: GameState, i: number, n: number): boolean {
   const st = s.tiers[i];
   if (!st) return false;
   const cost = tierCost(s, i, n);
-  if (n <= 0 || !Number.isFinite(cost) || s.score < cost) return false;
+  if (n <= 0 || !isFiniteD(cost) || s.score.lt(cost)) return false;
   const lvlBefore = milestoneLevel(s, i);
   const boughtBefore = st.bought;
-  s.score -= cost;
-  st.count += n;
+  s.score = s.score.minus(cost);
+  st.count = st.count.plus(n);
   st.bought += n;
   noteMilestones(s, i, lvlBefore);
   const p = prog(s);
@@ -193,10 +202,10 @@ export function step(s: GameState, dtSec: number): void {
     const st = s.tiers[i];
     const def = defs[i];
     if (!st || !def) continue;
-    const held = Math.floor(st.count);
+    const held = st.count.floor();
     // A wheel with nothing on it does not turn. Its phase is heat it keeps:
     // frozen through resets and idle stretches, resumed the moment you own one.
-    if (held < 1) continue;
+    if (held.lt(1)) continue;
     const T = period(s, i);
     // Sculpting: watching a wheel turn writes speed weight — but only while it
     // is still a wheel. Once it graduates to glow, the spigot closes itself.
@@ -210,32 +219,39 @@ export function step(s: GameState, dtSec: number): void {
     st.phase = total - completions;
     if (completions <= 0) continue;
     st.cycles += completions;
-    const pay = held * unitValue(s, i) * completions;
+    const pay = held.times(unitValue(s, i)).times(completions);
     deposit(s, def.target, pay);
   }
   clampState(s);
 }
 
-function deposit(s: GameState, target: number, amount: number): void {
-  if (amount <= 0) return;
+function deposit(s: GameState, target: number, amount: Decimal): void {
+  if (amount.lte(0)) return;
   if (target < 0) {
-    s.score += amount;
-    s.runScore += amount;
+    s.score = s.score.plus(amount);
+    s.runScore = s.runScore.plus(amount);
     const p = prog(s);
-    p.totalScore += amount;
-    if (s.runScore > p.bestRun) p.bestRun = s.runScore;
-    if (s.runScore >= scen(s).goal) p.beaten = true;
+    p.totalScore = p.totalScore.plus(amount);
+    if (s.runScore.gt(p.bestRun)) p.bestRun = s.runScore;
+    if (s.runScore.gte(scen(s).goal)) p.beaten = true;
   } else {
     const st = s.tiers[target];
-    if (st) st.count += amount;
+    if (st) st.count = st.count.plus(amount);
   }
 }
 
+/**
+ * A last-resort guard against a non-finite value poisoning the save, NOT a
+ * ceiling on play. Decimal reaches 1e(9e15), so NUM_CLAMP now sits far beyond
+ * anything the chain produces — the old 1e300 pinned the score silently, which
+ * meant the instrument stopped telling the truth exactly when the numbers got
+ * interesting.
+ */
 export function clampState(s: GameState): void {
-  if (!Number.isFinite(s.score) || s.score > NUM_CLAMP) s.score = NUM_CLAMP;
-  if (!Number.isFinite(s.runScore) || s.runScore > NUM_CLAMP) s.runScore = NUM_CLAMP;
+  if (!isFiniteD(s.score) || s.score.gt(NUM_CLAMP)) s.score = D(NUM_CLAMP);
+  if (!isFiniteD(s.runScore) || s.runScore.gt(NUM_CLAMP)) s.runScore = D(NUM_CLAMP);
   for (const st of s.tiers) {
-    if (!Number.isFinite(st.count) || st.count > NUM_CLAMP) st.count = NUM_CLAMP;
+    if (!isFiniteD(st.count) || st.count.gt(NUM_CLAMP)) st.count = D(NUM_CLAMP);
   }
 }
 
@@ -256,26 +272,27 @@ export function pickThresholds(s: GameState): [number, number, number] {
   return [a * f, b * f, c * f];
 }
 
-export function picksFor(s: GameState, runScore: number): number {
+export function picksFor(s: GameState, runScore: Decimal | number): number {
+  const r = D(runScore);
   const [a, b, c] = pickThresholds(s);
-  if (runScore >= c) return 3;
-  if (runScore >= b) return 2;
-  if (runScore >= a) return 1;
+  if (r.gte(c)) return 3;
+  if (r.gte(b)) return 2;
+  if (r.gte(a)) return 1;
   return 0;
 }
 
 /** One-shot: every held unit fires once, cascading top-down into the score. */
-export function liquidationValue(s: GameState): number {
+export function liquidationValue(s: GameState): Decimal {
   const defs = scen(s).tiers;
-  const virtual = s.tiers.map((t) => Math.floor(t.count));
-  let gained = 0;
+  const virtual = s.tiers.map((t) => t.count.floor());
+  let gained = ZERO;
   for (let i = defs.length - 1; i >= 0; i--) {
     const def = defs[i];
-    const held = virtual[i] ?? 0;
-    if (!def || held < 1) continue;
-    const pay = held * unitValue(s, i);
-    if (def.target < 0) gained += pay;
-    else virtual[def.target] = (virtual[def.target] ?? 0) + pay;
+    const held = virtual[i] ?? ZERO;
+    if (!def || held.lt(1)) continue;
+    const pay = held.times(unitValue(s, i));
+    if (def.target < 0) gained = gained.plus(pay);
+    else virtual[def.target] = (virtual[def.target] ?? ZERO).plus(pay);
   }
   return gained;
 }
@@ -283,7 +300,7 @@ export function liquidationValue(s: GameState): number {
 /** A tier you have ever bought (this scenario) or currently hold. */
 export function tierKnown(s: GameState, i: number): boolean {
   const st = s.tiers[i];
-  return (prog(s).everBought[i] ?? 0) > 0 || (st !== undefined && (st.bought > 0 || st.count >= 1));
+  return (prog(s).everBought[i] ?? 0) > 0 || (st !== undefined && (st.bought > 0 || st.count.gte(1)));
 }
 
 /** Visible tiers: one past the deepest ever bought in this scenario. */
@@ -326,7 +343,7 @@ export function poolEntries(s: GameState): Array<{ tier: number; stat: Stat; w: 
 
 export function rollDraw(s: GameState, rand: () => number): DrawOffer {
   const liquidated = liquidationValue(s);
-  const finalRun = Math.min(NUM_CLAMP, s.runScore + liquidated);
+  const finalRun = Decimal.min(D(NUM_CLAMP), s.runScore.plus(liquidated));
   const picks = picksFor(s, finalRun);
   const nCards = BASE_DRAW + s.bankedDraws;
   const entries = poolEntries(s);
@@ -371,17 +388,17 @@ export function doReset(s: GameState, now = Date.now()): void {
   const p = prog(s);
   p.resets += 1;
   const defs = scen(s).tiers;
-  s.tiers = s.tiers.map((t): TierState => ({ count: 0, bought: 0, phase: t.phase, cycles: 0 }));
-  while (s.tiers.length < defs.length) s.tiers.push({ count: 0, bought: 0, phase: 0, cycles: 0 });
-  s.runScore = 0;
-  s.score = 0;
+  s.tiers = s.tiers.map((t): TierState => ({ count: ZERO, bought: 0, phase: t.phase, cycles: 0 }));
+  while (s.tiers.length < defs.length) s.tiers.push({ count: ZERO, bought: 0, phase: 0, cycles: 0 });
+  s.runScore = ZERO;
+  s.score = ZERO;
   s.pool = {};
   s.bankedDraws = 0;
   s.runStartedAt = now;
   // Every run begins with one tier 1 already on the wheel — held, not bought:
   // starting units never touch the price ladder or milestones. Hotstart stacks.
   const t0 = s.tiers[0];
-  if (t0) t0.count += 1 + p.hotstart;
+  if (t0) t0.count = t0.count.plus(1 + p.hotstart);
   if (p.flywheel) {
     for (let i = 0; i < defs.length; i++) {
       const st = s.tiers[i];
@@ -393,13 +410,13 @@ export function doReset(s: GameState, now = Date.now()): void {
 export function switchScenario(s: GameState, id: string, now = Date.now()): void {
   s.scenario = id;
   const defs = scen(s).tiers;
-  s.tiers = defs.map(() => ({ count: 0, bought: 0, phase: 0, cycles: 0 }));
-  s.runScore = 0;
+  s.tiers = defs.map(() => ({ count: ZERO, bought: 0, phase: 0, cycles: 0 }));
+  s.runScore = ZERO;
   s.pool = {};
   s.bankedDraws = 0;
   s.runStartedAt = now;
   const p = prog(s); // materialize
-  s.score = 0;
+  s.score = ZERO;
   const t0 = s.tiers[0];
-  if (t0) t0.count += 1 + p.hotstart;
+  if (t0) t0.count = t0.count.plus(1 + p.hotstart);
 }
