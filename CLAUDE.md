@@ -31,8 +31,12 @@ repo is the source of truth; the artifact is compiled output.
   prices (integer ceil), a wheel only sweeps if it is actually producing.
 - **No dead stats, no piecewise.** Every stat affects the bottom line forever.
   Speed divides the period with no floor; the discrete→glow switch at 0.3s
-  lives ONLY in the renderer. The tableau is additive levels (mult = 1 +
-  0.75·L): equal absolute chunks forever, naturally diminishing relative.
+  lives ONLY in the renderer. The tableau is additive levels (mult = 1 + L):
+  equal absolute chunks forever, naturally diminishing relative.
+- **Unit production is integer.** You can't make 0.75 of a generator: every
+  multiplier touching unit output is an integer (potency +1/level, milestones
+  ×2/×3). Fractions appear only where a scenario's diff says so (s4's half-rate
+  bridge), and small values display exactly (fmtVal), never floored.
 - **Decisions per minute is the engagement currency.** No tap/press mechanic.
   If a change adds waiting without adding a pending decision, it's wrong.
 - **Runs end by player timing** (layer 1); scenarios end at explicit reach
