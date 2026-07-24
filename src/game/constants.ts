@@ -44,8 +44,52 @@ export const SPEED_PER_SEC = 0.25;
  * more — and this turns it negative: the deeper your stake in a tier, the more
  * the pool leans elsewhere. Damping is per TIER, not per (tier,stat), so it
  * never refuses to sell you the specific line you are building.
+ *
+ * Raised 0.02 → 0.08 when the floor went in. A floor is a standing promise that
+ * a line will turn up, and a standing promise is a focus engine unless
+ * something takes it back: pour every pick into one line and the pool would
+ * keep handing it over at full odds forever. Damping is the counter-loop the
+ * design already had, and it now applies to the floor slice too, so it has to
+ * bite hard enough to be felt against it.
  */
-export const POOL_DAMP = 0.02;
+export const POOL_DAMP = 0.08;
+
+/**
+ * Signal → odds. The behavioural sources are right: a run that was all buying
+ * really should lean cost. Raw PROPORTIONALITY was wrong. Cost weight is
+ * 20·log2(stake) and lands in the hundreds; speed weight is 0.25/s and a
+ * chained run is eight seconds long, so it lands at two. Fifty to one becomes
+ * "cost, always" — measured at 86% of every card offered past the first hour,
+ * with tier-1 value at 2%.
+ *
+ * So sample on w^POOL_ALPHA instead. The exponent preserves the ORDER of the
+ * signal (more engagement is still more odds) and destroys the landslide:
+ * fifty to one becomes six to one. It is the same knob a designer reaches for
+ * when a leaderboard is technically correct and unreadable.
+ */
+export const POOL_ALPHA = 0.45;
+
+/**
+ * Then rails, both quoted in EVEN SPLITS — if the player knows n lines, an even
+ * split is 1/n, and these are the multiples of it no line may pass. Quoting
+ * them this way is what makes the shape scale-free: the pool looks the same at
+ * three known lines and at twenty-one, and the histogram can draw one tick at
+ * the even split with the whole band read off it.
+ *
+ * FLOOR: never below a quarter of an even split. Tier-1 value is one of the
+ * largest income levers in the game and the pool had stopped offering it at
+ * all — because in a chained run you cross no tier-1 milestone, and w^alpha of
+ * zero is still zero. Only a floor answers a zero. It is not a menu: it buys a
+ * line the right to turn up, and nothing else — everything above it is earned.
+ *
+ * CAP: never above 2.2 even splits, and the spill goes out FLAT rather than
+ * proportionally, so it reaches the lines that earned nothing instead of
+ * handing the landslide to the next cost line down. This is the rail the
+ * histogram states loudest: capped bars sit exactly level with each other, so
+ * you can see the run's loudest habit has stopped buying more of the draw.
+ */
+export const POOL_FLOOR = 0.25;
+export const POOL_CAP = 2.2;
 
 export const NUM_CLAMP = 1e300;
 

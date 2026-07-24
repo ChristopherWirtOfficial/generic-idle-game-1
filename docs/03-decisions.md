@@ -63,18 +63,67 @@ it (0.6% of offers). Per-doubling and per-second-watched are the same
 quantities measured on a scale that doesn't self-amplify.
 
 **Per-tier damping.** A tier's weight is divided by (1 + POOL_DAMP × levels
-already held on that tier), POOL_DAMP 0.02. The raw loop is positive
-feedback; this makes it negative, so the pool leans elsewhere as your stake
-in a tier deepens — which is what you want, since additive levels are worth
-progressively less to a tier you've already built. Damping is per TIER, not
-per (tier,stat), so it never refuses to sell you the specific line you're
-building. `poolEntries` applies it, so the histogram shows real odds.
+already held on that tier), POOL_DAMP 0.08 (was 0.02 — see shaping below).
+The raw loop is positive feedback; this makes it negative, so the pool leans
+elsewhere as your stake in a tier deepens — which is what you want, since
+additive levels are worth progressively less to a tier you've already built.
+Damping is per TIER, not per (tier,stat), so it never refuses to sell you the
+specific line you're building.
 
 Cost, honestly: damping is slower. Tier 3 24m→31m, tier 6 62m→78m, best run
 at 150m 1.2e14→7.1e13. POOL_DAMP is the dial.
 
 Visible as the RESET-tab histogram: IG1's folklore shallow-reset trick,
 moved into the interface as the strategy surface.
+
+## Shaping: the signal was right, the mapping was wrong
+
+The three sources measure engagement honestly and then the draw squandered
+it, because probability was taken PROPORTIONAL to weight. Cost weight is
+20·log2(stake) and lands in the hundreds; speed weight is 0.25/s and a
+chained run is eight seconds long, so it lands at two. Fifty to one becomes
+"cost, always". Measured on the old build past two hours: 90% of every card
+offered was a cost card, speed totalled 0.3%, and tier-1 value — one of the
+largest income levers in the game — was 0.1% of cards and 0.4% of hands.
+That is a dead stat and a dead line, in a game whose first law is that
+there are none.
+
+Three changes, all in the mapping, none in the sources:
+
+- **Exponent.** Sample on w^POOL_ALPHA, alpha 0.45. Preserves the ORDER of
+  the signal and kills the landslide. Measured alone: value cards roughly
+  double at every stage, speed goes 1.7%→11% at 30–60m, cost 86%→67%.
+  It does NOT reduce tier-1's share — tier 1 owns both the loudest line
+  (t1 cost) and the quietest (t1 value ≈ 0), so compressing the range helps
+  it as much as it hurts it. Alpha fixes the stat monoculture, not the tier
+  skew, and it cannot touch a line at literal zero: w^alpha of 0 is 0.
+- **Rails, quoted in EVEN SPLITS.** With n known lines an even split is 1/n;
+  POOL_FLOOR 0.25 is the floor in those units and POOL_CAP 2.2 the ceiling.
+  Quoting both this way makes the shape scale-free — the pool looks the same
+  at three known lines and at twenty-one — and lets the histogram draw one
+  tick and read the whole band off it. The floor is the only thing that can
+  answer a zero. The cap's spill is FLAT, not proportional, or a cost
+  landslide just gets handed to the next cost line down.
+- **No replacement.** The hand is drawn from a bag that refills only once
+  every line has been offered. Three independent samples from a skewed pool
+  were the same line about half the time (48% of hands carried a duplicate,
+  35% at the worst stage), which spends the whole "choose from N" premise on
+  nothing. Now: 0% duplicates, and hands offering ≥2 different stats go
+  33%→79%.
+
+The floor damps. A flat floor is a promise that never diminishes, and a
+promise that never diminishes is a focus engine — pour every pick into one
+line and the pool keeps handing it back at full odds forever. The floor
+slice is shared along per-tier damping like every other weight, and
+POOL_DAMP went 0.02→0.08 so it bites hard enough to be felt against it.
+
+Cost, honestly, and it is not small: giving the veteran the levers they were
+asking for compounds through the chain. s1's 1e15 goal falls at ~2h25
+against ~6h before. This was swept across alpha 0.25–1.0, floor 0–0.55, cap
+1.6–off, damp 0.02–0.5, THRESH_A 0.12–0.75 and THRESH_B 2–4: the goal clock
+never left 82–147 minutes. There is no draw-side dial that restores six
+hours, because the compression is the fix working. If the arc matters more
+than the draw, the compensator is the layer-2 dial — the scenario goal.
 
 ## Draws and the tableau
 

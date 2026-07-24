@@ -208,13 +208,24 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .threshrow { display: flex; justify-content: space-between; font-size: 12.5px; padding: 5px 2px; color: var(--dim); }
 .threshrow b { color: var(--text); font-weight: 400; }
 .threshrow.met b { color: #9ED89E; }
+.histnote { font-size: 10.5px; line-height: 1.5; color: var(--faint); padding: 2px 2px 0; }
 .hist { display: flex; flex-direction: column; gap: 5px; padding: 8px 0; }
 .hrow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--dim); }
 .hrow .hlabel { flex: none; width: 74px; text-align: right; white-space: nowrap; }
-.hrow .hbarwrap { flex: 1; height: 8px; background: #0D0F12; border-radius: 99px; overflow: hidden; }
-/* display:block is load-bearing: .hbar is a span in a non-flex parent, so
-   without it the element stays inline and drops width/height entirely. */
-.hrow .hbar { display: block; height: 100%; border-radius: 99px; }
+/* flex, so the floor and earned segments of one bar butt together and the row
+   reads as a single length; position:relative anchors the even-split tick. */
+.hrow .hbarwrap { position: relative; flex: 1; display: flex; height: 8px; background: #0D0F12; border-radius: 99px; overflow: hidden; }
+/* display:block is load-bearing: .hbar is a span, so without it the element
+   stays inline and drops width/height entirely. */
+.hrow .hbar { display: block; height: 100%; flex: none; }
+/* The base slice reads as underpainting, the earned part as the real bar. */
+.hrow .hfloor { opacity: 0.3; }
+.hrow .hearned { opacity: 0.95; }
+.hrow .htick { position: absolute; top: -1px; bottom: -1px; width: 1px; background: var(--text); opacity: 0.3; }
+/* A bar that reaches the end is pinned at the cap; say so in the number too. */
+.hrow.capped .hbarwrap { box-shadow: inset 0 0 0 1px #FFFFFF26; }
+.hrow .hpct { flex: none; width: 30px; text-align: right; font-size: 10.5px; color: var(--faint); }
+.hrow.capped .hpct { color: var(--text); }
 .resetslab { border-color: var(--text); }
 .resetslab .sv { letter-spacing: 0.12em; }
 

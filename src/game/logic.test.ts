@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  BANK_CAP, BANK_MS, BASE_DRAW, GLOW_PERIOD_S, LEVEL_POTENCY, NUM_CLAMP, POOL_DAMP, TRICKLE_S,
+  BANK_CAP, BANK_MS, BASE_DRAW, GLOW_PERIOD_S, LEVEL_POTENCY, NUM_CLAMP, POOL_ALPHA, POOL_CAP,
+  POOL_DAMP, POOL_FLOOR, TRICKLE_S,
 } from "./constants";
 import {
   applyPick, buyTier, clampState, doReset, liquidationValue, maxAffordable, milestoneLevel,
-  period, pickThresholds, picksFor, poolEntries, prog, rollDraw, scoreRate,
-  step, switchScenario, tableauLevels, threshScale, tierCost, unitValue, visibleTiers,
+  period, pickThresholds, picksFor, poolEntries, poolSlots, prog, rollDraw, scoreRate,
+  shapeWeights, step, switchScenario, tableauLevels, threshScale, tierCost, unitValue, visibleTiers,
 } from "./logic";
 import { fmtVal } from "./format";
 import { freshState } from "./state";
@@ -138,11 +139,76 @@ describe("pool sculpting", () => {
     const s = freshState(0);
     s.score = D(1e12);
     buyTier(s, 0, 30);
-    const raw = poolEntries(s).reduce((a, e) => a + e.w, 0);
+    s.tiers[1]!.count = D(1);
+    step(s, 20); // give tier 2 some weight of its own to lean toward
+    const raw = poolSlots(s).find((e) => e.tier === 0 && e.stat === "cost")!.w;
     setLevels(s, 0, "cost", 50);
-    const damped = poolEntries(s).reduce((a, e) => a + e.w, 0);
-    expect(damped).toBeLessThan(raw);
+    const damped = poolSlots(s).find((e) => e.tier === 0 && e.stat === "cost")!.w;
     expect(damped).toBeCloseTo(raw / (1 + POOL_DAMP * 50), 9);
+    // ...and the damping reaches the floor slice too, or the floor would be an
+    // undiminishing promise and so a free focus engine.
+    const t0 = poolEntries(s).filter((e) => e.tier === 0);
+    const t1 = poolEntries(s).filter((e) => e.tier === 1);
+    expect(t0[0]!.floor).toBeLessThan(t1[0]!.floor);
+  });
+});
+
+describe("shaping: signal in, odds out", () => {
+  it("is a probability distribution, ordered like the signal", () => {
+    const p = shapeWeights([100, 20, 2, 0]);
+    expect(p.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+    expect(p[0]!).toBeGreaterThan(p[1]!);
+    expect(p[1]!).toBeGreaterThan(p[2]!);
+    expect(p[2]!).toBeGreaterThan(p[3]!);
+  });
+
+  it("compresses dominance: alpha<1 shrinks the loudest line's lead", () => {
+    const ws = [400, 20, 2, 0];
+    const raw = shapeWeights(ws, 1, 0, 99);
+    const shaped = shapeWeights(ws, 0.45, 0, 99);
+    expect(raw[0]! / raw[1]!).toBeGreaterThan(shaped[0]! / shaped[1]!);
+    expect(shaped[0]!).toBeLessThan(raw[0]!);
+  });
+
+  it("floors every known line — a zero-weight line still has real odds", () => {
+    const ws = [400, 0, 0, 0];
+    expect(shapeWeights(ws, 0.45, 0, 99)[1]).toBe(0);
+    const withFloor = shapeWeights(ws, 0.45, 0.25, 99);
+    // Floor budget is quoted in even splits: F/n of the draw, at n lines.
+    expect(withFloor[1]!).toBeCloseTo(0.25 / 4, 9);
+  });
+
+  it("caps every line at CAP even splits, spilling flat to the rest", () => {
+    const p = shapeWeights([1e6, 1, 1, 1], 0.45, 0, 2.2);
+    expect(p[0]!).toBeCloseTo(2.2 / 4, 9);
+    // Flat spill, not proportional: the three starved lines end up equal.
+    expect(p[2]!).toBeCloseTo(p[1]!, 9);
+    expect(p.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+  });
+
+  it("never caps below an even split, and is uniform on an empty pool", () => {
+    expect(shapeWeights([1e6, 1, 1], 0.45, 0, 0.1)[0]!).toBeCloseTo(1 / 3, 9);
+    expect(shapeWeights([0, 0, 0])).toEqual([1 / 3, 1 / 3, 1 / 3]);
+  });
+
+  it("shares the floor along the basis it is given", () => {
+    const p = shapeWeights([0, 0], 0.45, 1, 99, [1, 3]);
+    expect(p[0]!).toBeCloseTo(0.25, 9);
+    expect(p[1]!).toBeCloseTo(0.75, 9);
+  });
+
+  it("poolEntries is the distribution the roll actually uses", () => {
+    const s = freshState(0);
+    s.score = D(1e12);
+    buyTier(s, 0, 40);
+    const entries = poolEntries(s);
+    expect(entries.reduce((a, e) => a + e.w, 0)).toBeCloseTo(1, 9);
+    const slots = poolSlots(s);
+    const direct = shapeWeights(slots.map((e) => e.w), POOL_ALPHA, POOL_FLOOR, POOL_CAP, slots.map((e) => e.damp));
+    expect(entries.map((e) => e.w)).toEqual(direct);
+    // Every line the player has opened is on the table, three stats each.
+    expect(entries).toHaveLength(3);
+    expect(entries.every((e) => e.w > 0)).toBe(true);
   });
 });
 
@@ -199,6 +265,40 @@ describe("draws and picks", () => {
     applyPick(s, stat);
     expect(tableauLevels(s, stat.tier, stat.stat!)).toBe(before + stat.levels);
   });
+
+  it("never offers the same line twice while a distinct one is left", () => {
+    // Two tiers open -> six lines. Three cards must be three different lines,
+    // whatever the pool looks like: a hand you cannot choose within is not a
+    // hand. Independent sampling repeated a line in about half of all hands.
+    const s = freshState(0);
+    s.score = D(1e14);
+    buyTier(s, 0, 300); // one landslide line to try to monopolise the draw
+    s.tiers[1]!.count = D(1);
+    buyTier(s, 1, 1);
+    step(s, 30);
+    for (let seed = 1; seed <= 60; seed++) {
+      const cards = rollDraw(s, lcg(seed)).cards.filter((c) => c.kind === "stat");
+      const lines = new Set(cards.map((c) => `${c.tier}|${c.stat}`));
+      expect(lines.size).toBe(cards.length);
+    }
+  });
+
+  it("refills the bag only once a hand has run out of distinct lines", () => {
+    const s = freshState(0); // one tier open -> exactly three lines
+    s.score = D(1e9);
+    buyTier(s, 0, 30);
+    s.bankedDraws = 3; // six cards against three lines
+    const cards = rollDraw(s, lcg(11)).cards.filter((c) => c.kind === "stat");
+    const counts = new Map<string, number>();
+    for (const c of cards) counts.set(`${c.tier}|${c.stat}`, (counts.get(`${c.tier}|${c.stat}`) ?? 0) + 1);
+    expect(Math.max(...counts.values()) - Math.min(...counts.values())).toBeLessThanOrEqual(1);
+  });
+
+  it("offers every stat on a fresh run rather than one consolation card", () => {
+    const s = freshState(0);
+    const stats = new Set(rollDraw(s, lcg(3)).cards.filter((c) => c.kind === "stat").map((c) => c.stat));
+    expect(stats).toEqual(new Set(["value", "speed", "cost"]));
+  });
 });
 
 describe("reset: phase stays, rest goes", () => {
@@ -212,7 +312,11 @@ describe("reset: phase stays, rest goes", () => {
     expect(s.tiers[0]!.bought).toBe(0);
     expect(s.tiers[0]!.count.toNumber()).toBe(1);
     expect(s.tiers[0]!.phase).toBeCloseTo(0.37, 9);
-    expect(poolEntries(s)).toHaveLength(0);
+    // The run's writing is gone. The lines themselves stay on the table — you
+    // still know tier 1 — so what a fresh pool offers is an even split, not
+    // nothing and not a hardcoded card.
+    expect(s.pool).toEqual({});
+    expect(poolEntries(s).map((e) => e.w)).toEqual([1 / 3, 1 / 3, 1 / 3]);
     expect(s.score.toNumber()).toBeCloseTo(0, 9);
     expect(tierCost(s, 0, 1).toNumber()).toBe(5); // the gift never touched the ladder
     expect(prog(s).resets).toBe(1);

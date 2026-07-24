@@ -174,6 +174,32 @@ describe("reset tab is the strategy surface", () => {
     expect(getComputedStyle(hbar).display).toBe("block");
     expect(hbar.style.width).toMatch(/%/);
   });
+
+  it("states the odds as odds, and they add up to a whole draw", () => {
+    // The instrument never lies: these percentages ARE the roll. If they do not
+    // sum to 100 the histogram is describing a distribution nobody samples.
+    const shown = $$(".hrow .hpct").map((e) => Number(e.textContent!.replace("%", "")));
+    expect(shown.length).toBe($$(".hrow").length);
+    expect(shown.reduce((a, b) => a + b, 0)).toBeGreaterThan(97);
+    expect(shown.reduce((a, b) => a + b, 0)).toBeLessThan(103);
+    // Every line the player has opened is on the table, none at zero.
+    expect(Math.min(...shown)).toBeGreaterThan(0);
+  });
+
+  it("shows the earned part of a bar sitting on the base slice", () => {
+    expect($$(".hrow .hfloor").length).toBe($$(".hrow").length);
+    expect($$(".hrow .hearned").length).toBe($$(".hrow").length);
+    expect($(".hrow .htick")!.getAttribute("style")).toMatch(/left:/);
+  });
+
+  it("scales bars to the ceiling, so no bar ever overflows its track", () => {
+    // Full width means "pinned at the cap", the same thing every time. Scaled
+    // to the current leader instead, the axis would move under the player.
+    const widths = $$(".hrow .hbar").map((e) => parseFloat((e as HTMLElement).style.width));
+    expect(widths.every((w) => w >= 0 && w <= 100.001)).toBe(true);
+    const ticks = $$(".hrow .htick").map((e) => (e as HTMLElement).style.left);
+    expect(new Set(ticks).size).toBe(1); // one axis for every row
+  });
 });
 
 describe("ceremony", () => {
