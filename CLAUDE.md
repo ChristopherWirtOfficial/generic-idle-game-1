@@ -3,6 +3,15 @@
 A management idle game shipped as a single Claude artifact (React .jsx). The
 repo is the source of truth; the artifact is compiled output.
 
+## Full design context
+
+`docs/` carries the complete handoff: history and the failure pattern that
+produced the design law (01), the reference-game research this taste is
+built on (02), every settled decision with rationale (03), rejected ideas
+and open questions (04), sim methodology and tuning rationale (05), chrome
+intent and the pending art-direction session (06), and collaboration
+process (07). Read docs/00-INDEX.md before making design-level changes.
+
 ## Commands
 
 - `npm run dev` — vite dev server
