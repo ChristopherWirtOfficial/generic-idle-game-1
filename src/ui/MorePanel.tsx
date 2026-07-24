@@ -1,12 +1,20 @@
 import { useState } from "react";
+import { hue } from "./Rail";
 import { SCENARIOS } from "../game/constants";
-import { prog, scen, threshScale } from "../game/logic";
+import { prog, scen, tableauLevels, threshScale } from "../game/logic";
 import { fmt, fmtDuration } from "../game/format";
-import type { GameState } from "../game/types";
+import type { GameState, Stat } from "../game/types";
 
-interface Props { state: GameState; onSwitch: (id: string) => void; onErase: () => void; }
+interface Props {
+  state: GameState;
+  onSwitch: (id: string) => void;
+  onErase: () => void;
+  onCheatLevel: (tier: number, stat: Stat, delta: number) => void;
+  onCheatHotstart: (delta: number) => void;
+  onCheatFlywheel: () => void;
+}
 
-export function MorePanel({ state, onSwitch, onErase }: Props): JSX.Element {
+export function MorePanel({ state, onSwitch, onErase, onCheatLevel, onCheatHotstart, onCheatFlywheel }: Props): JSX.Element {
   const [armedErase, setArmedErase] = useState(false);
   const [armedSwitch, setArmedSwitch] = useState<string | null>(null);
   const p = prog(state);
@@ -57,6 +65,34 @@ export function MorePanel({ state, onSwitch, onErase }: Props): JSX.Element {
         <div className="kv"><span>score, all runs</span><b>{fmt(p.totalScore)}</b></div>
         <div className="kv"><span>start bonus</span><b>+{p.hotstart} · flywheel {p.flywheel ? "yes" : "no"}</b></div>
         <div className="kv"><span>watching since</span><b>{fmtDuration(Date.now() - state.startedAt)}</b></div>
+
+        <div className="sectionlabel">cheat · levels, no pick history</div>
+        {scen(state).tiers.map((_, i) => (
+          <div key={i} className="cheatrow">
+            <span className="ctier" style={{ color: hue(i) }}>{i + 1}</span>
+            {(["val", "spd", "cst"] as const).map((stat) => (
+              <span key={stat} className="cgroup">
+                <span className="cstat">{stat}</span>
+                <button className="cbtn" aria-label={`cheat ${i + 1} ${stat} -`} onClick={() => onCheatLevel(i, stat, -1)}>−</button>
+                <span className="cl">{tableauLevels(state, i, stat)}</span>
+                <button className="cbtn" aria-label={`cheat ${i + 1} ${stat} +`} onClick={() => onCheatLevel(i, stat, 1)}>+</button>
+              </span>
+            ))}
+          </div>
+        ))}
+        <div className="cheatrow">
+          <span className="ctier">∗</span>
+          <span className="cgroup">
+            <span className="cstat">start</span>
+            <button className="cbtn" aria-label="cheat hotstart -" onClick={() => onCheatHotstart(-1)}>−</button>
+            <span className="cl">{p.hotstart}</span>
+            <button className="cbtn" aria-label="cheat hotstart +" onClick={() => onCheatHotstart(1)}>+</button>
+          </span>
+          <span className="cgroup">
+            <span className="cstat">flywheel</span>
+            <button className="cbtn cwide" aria-label="cheat flywheel" onClick={onCheatFlywheel}>{p.flywheel ? "ON" : "off"}</button>
+          </span>
+        </div>
 
         {!armedErase && <button className="dangerbtn" onClick={() => setArmedErase(true)}>ERASE EVERYTHING</button>}
         {armedErase && (

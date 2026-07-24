@@ -4,7 +4,7 @@ import { applyPick, buyTier, doReset, prog, rollDraw, scen, scoreRate, step, swi
 import { applyOffline, eraseSave, loadGame, persist } from "./game/save";
 import { freshState } from "./game/state";
 import { fmt, fmtRate } from "./game/format";
-import type { Card, DrawOffer, GameState, OfflineReport } from "./game/types";
+import type { Card, DrawOffer, GameState, OfflineReport, Stat } from "./game/types";
 import { CSS } from "./ui/styles";
 import { Rail } from "./ui/Rail";
 import { BuyPanel, type BuyAmount } from "./ui/BuyPanel";
@@ -147,6 +147,33 @@ export default function App(): JSX.Element {
     bump();
   }, [bump]);
 
+  const onCheatLevel = useCallback((tier: number, stat: Stat, delta: number) => {
+    const s = stateRef.current;
+    if (!s) return;
+    const row = (prog(s).tableau[tier] ??= { val: 0, spd: 0, cst: 0 });
+    row[stat] = Math.max(0, row[stat] + delta);
+    void persist(s);
+    bump();
+  }, [bump]);
+
+  const onCheatHotstart = useCallback((delta: number) => {
+    const s = stateRef.current;
+    if (!s) return;
+    const p = prog(s);
+    p.hotstart = Math.max(0, p.hotstart + delta);
+    void persist(s);
+    bump();
+  }, [bump]);
+
+  const onCheatFlywheel = useCallback(() => {
+    const s = stateRef.current;
+    if (!s) return;
+    const p = prog(s);
+    p.flywheel = !p.flywheel;
+    void persist(s);
+    bump();
+  }, [bump]);
+
   const onErase = useCallback(() => {
     void eraseSave();
     stateRef.current = freshState();
@@ -189,7 +216,12 @@ export default function App(): JSX.Element {
           <BuyPanel state={s} sel={sel} setSel={setSel} amount={amount} setAmount={setAmount} onBuy={onBuy} />
         )}
         {tab === "reset" && <ResetPanel state={s} onReset={onReset} />}
-        {tab === "more" && <MorePanel state={s} onSwitch={onSwitch} onErase={onErase} />}
+        {tab === "more" && (
+          <MorePanel
+            state={s} onSwitch={onSwitch} onErase={onErase}
+            onCheatLevel={onCheatLevel} onCheatHotstart={onCheatHotstart} onCheatFlywheel={onCheatFlywheel}
+          />
+        )}
         <TabBar tab={tab} setTab={setTab} />
       </div>
       {offer && <CardsOverlay offer={offer} onDone={onCeremonyDone} />}

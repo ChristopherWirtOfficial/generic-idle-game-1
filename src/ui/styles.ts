@@ -140,6 +140,14 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .scenrow.beat .sflag { color: #9ED89E; }
 .scenrow:disabled { opacity: 0.4; }
 .sectionlabel { font-size: 10.5px; letter-spacing: 0.2em; color: var(--faint); margin: 14px 2px 6px; text-transform: uppercase; }
+.cheatrow { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; color: var(--dim); }
+.cheatrow .ctier { flex: none; width: 16px; font-size: 13px; font-weight: 700; text-align: center; }
+.cheatrow .cgroup { flex: 1; display: flex; align-items: center; gap: 4px; justify-content: center; }
+.cheatrow .cstat { color: var(--faint); }
+.cheatrow .cl { min-width: 22px; text-align: center; color: var(--text); }
+.cheatrow .cbtn { width: 30px; height: 30px; border: 1px solid var(--edge); border-radius: 8px; color: var(--dim); font-size: 14px; }
+.cheatrow .cbtn:active { background: var(--card); }
+.cheatrow .cwide { width: auto; padding: 0 10px; }
 .dangerbtn { width: 100%; border: 1px solid #C86A6A55; color: #D89E9E; border-radius: 12px; padding: 12px; font-size: 13px; margin-top: 12px; }
 .dangerbtn.armed { background: #3A2222; }
 

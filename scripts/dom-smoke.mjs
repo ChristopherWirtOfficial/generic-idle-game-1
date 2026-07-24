@@ -109,6 +109,11 @@ check("run zeroed after reset", byText(".scoresub span", "run 0") !== undefined,
 byText(".tabbar button", "MORE").click();
 await sleep(200);
 check("more tab: picks counted", byText(".kv", "picks taken")?.textContent.includes("2"), byText(".kv", "picks taken")?.textContent);
+const cheatPlus = document.querySelector('[aria-label="cheat 1 val +"]');
+check("cheat panel renders", cheatPlus !== null);
+cheatPlus.click();
+await sleep(50);
+check("cheat raises the level in place", document.querySelector('[aria-label="cheat 1 val +"]').parentElement.querySelector(".cl").textContent === "3");
 check("more tab: scenario 2 locked", byText(".scenrow", "locked") !== undefined);
 
 store.delete("gig1:save3");
