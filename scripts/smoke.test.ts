@@ -36,8 +36,8 @@ console.log("— cycles: one formula, no piecewise —");
   const t0 = a.tiers[0]!;
   t0.count = 10; t0.bought = 10; t0.phase = 0;
   step(a, 100);
-  // base period 5s → 20 completions × 10 held × value 1
-  close(a.runScore, 200, 0.001, "discrete regime pays count × cycles");
+  // base period 2s → 50 completions × 10 held × value 1
+  close(a.runScore, 500, 0.001, "discrete regime pays count × cycles");
 
   const b = freshState(0);
   setLevels(b, 0, "spd", 24); // mult ×19 → period ~0.263s, below GLOW
@@ -55,8 +55,8 @@ console.log("— unowned wheels freeze —");
   step(s, 3);
   close(s.tiers[0]!.phase, 0.2, 1e-9, "empty tier holds its phase through step");
   s.tiers[0]!.count = 1;
-  step(s, 2.5);
-  close(s.tiers[0]!.phase, 0.7, 1e-9, "owned tier resumes from the frozen phase");
+  step(s, 1.4); // period 2s: adv 0.7, total 0.9 — resumes from 0.2, no completion yet
+  close(s.tiers[0]!.phase, 0.9, 1e-9, "owned tier resumes from the frozen phase");
   const o = freshState(0);
   o.tiers[0]!.phase = 0.4;
   applyOffline(o, BANK_MS);
@@ -94,7 +94,7 @@ console.log("— pool sculpting —");
   close(pool0.cst, 30, 1e-9, "buys write cst weight 1:1");
   close(pool0.val, 20, 1e-9, "milestone crossing writes val weight");
   s.tiers[0]!.phase = 0;
-  step(s, 10); // 2 completions at 5s
+  step(s, 4); // 2 completions at the 2s base period
   close(pool0.spd, 1, 1e-9, "discrete completions write spd weight 0.5 each");
 
   setLevels(s, 0, "spd", 24); // glow regime
