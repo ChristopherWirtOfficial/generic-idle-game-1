@@ -4,8 +4,8 @@
 
 `npm run sim [hours] [resetPolicy] [scenario]` bundles src/game via
 sim-core.ts and runs a greedy player: buys deepest-affordable with a
-save-toward-deeper heuristic, auto-picks like a veteran (spd t0 until
-sub-second, then val), resets at the pick policy, and — crucially — models
+save-toward-deeper heuristic, auto-picks like a veteran (speed t0 until
+sub-second, then value), resets at the pick policy, and — crucially — models
 6s of HUMAN CEREMONY per reset (a machine chains 1s resets; a person sits
 through the reveal). Every 25th reset is a deliberate push (hold for 2–3
 picks). Without the push phases the sim never attempts depth and
@@ -15,15 +15,15 @@ reset rates.
 **Run the sim after ANY economy change.** It has caught every degeneracy so
 far. Eyeball: opening buy cadence, tier-2 time, first reset, tier 3–6 era
 times, picks/resets ratio (~1.07 = stratification holding), late cadence,
-spd equilibrium period, bestRun trajectory vs goal.
+speed equilibrium period, bestRun trajectory vs goal.
 
 ## The three degeneracies (why the mechanisms exist)
 
-1. **spd pool runaway → the spigot.** spd weight accrued per completion;
+1. **speed pool runaway → the spigot.** speed weight accrued per completion;
    completions/sec is a physics quantity that explodes as period shrinks →
-   pool went ~100% spd → ×Infinity by 90 sim-minutes. Fix: spd weight only
+   pool went ~100% speed → ×Infinity by 90 sim-minutes. Fix: speed weight only
    accrues while period ≥ GLOW (0.3s). The graduation closes the spigot;
-   equilibrium lands just under the glow line (currently spd L8, 0.22s).
+   equilibrium lands just under the glow line (currently speed L8, 0.22s).
 
 2. **Multiplicative tableau overflow → additive levels.** Thousands of
    ×1.5–×3 picks compounded to Infinity. Additive (mult = 1+L) decelerates

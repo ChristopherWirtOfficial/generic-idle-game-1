@@ -148,7 +148,7 @@ export default function App(): JSX.Element {
   const onCheatLevel = useCallback((tier: number, stat: Stat, delta: number) => {
     const s = stateRef.current;
     if (!s) return;
-    const row = (prog(s).tableau[tier] ??= { val: 0, spd: 0, cst: 0 });
+    const row = (prog(s).tableau[tier] ??= { value: 0, speed: 0, cost: 0 });
     row[stat] = Math.max(0, row[stat] + delta);
     void persist(s);
     bump();

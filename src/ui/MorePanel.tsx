@@ -71,7 +71,7 @@ export function MorePanel({ state, onSwitch, onErase, onCheatLevel, onCheatHotst
         {scen(state).tiers.map((_, i) => (
           <div key={i} className="cheatrow">
             <span className="ctier" style={{ color: hue(i) }}>{i + 1}</span>
-            {(["val", "spd", "cst"] as const).map((stat) => (
+            {(["value", "speed", "cost"] as const).map((stat) => (
               <span key={stat} className="cgroup">
                 <span className="cstat"><StatGlyph stat={stat} />{STAT_NAME[stat]}</span>
                 <button className="cbtn" aria-label={`cheat ${i + 1} ${stat} -`} onClick={() => onCheatLevel(i, stat, -1)}>−</button>

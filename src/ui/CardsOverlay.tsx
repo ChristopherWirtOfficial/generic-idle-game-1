@@ -13,7 +13,7 @@ function cardText(c: Card): { big: string; small: string; tc: string | null; sta
   if (c.kind === "hotstart") {
     return { big: `START +${c.levels}`, small: "runs begin holding more tier 1", tc: null, stat: null };
   }
-  const stat = c.stat ?? "val";
+  const stat = c.stat ?? "value";
   return {
     big: `${(c.tier ?? 0) + 1} ${STAT_NAME[stat]} +${c.levels}`,
     small: `tier ${(c.tier ?? 0) + 1} ${STAT_EFFECT[stat]}`,

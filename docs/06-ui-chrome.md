@@ -78,7 +78,7 @@ loop only starts if requestAnimationFrame exists.
 
 RESET slab → rollDraw → veil with cash-out figure and the card fan →
 toggle-take picks → KEEP → applyPick each → doReset → land on BUY. Cards:
-tier hue band, raw text ("2 val +1"), rarity border weight. Sized to
+tier hue band, raw text ("2 value +1"), rarity border weight. Sized to
 reveal-and-choose; enrichment belongs to the art-direction session.
 
 ## CHEAT panel

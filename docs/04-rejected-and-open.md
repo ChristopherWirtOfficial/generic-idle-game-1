@@ -27,7 +27,7 @@ exploration choices.
 levels replaced it (see 03).
 
 **Payout flooring for integer production.** Rejected because floor makes a
-fresh val pick do nothing for a small holder — a dead stat at the exact
+fresh value pick do nothing for a small holder — a dead stat at the exact
 moment of the pick. Integer POTENCY instead.
 
 **Full dot-matrix/pixel cloning of IG1's skin.** "Wears their clothes."
@@ -50,7 +50,7 @@ toward wanting the literal version.
 
 **Machine buyers (automation as earned content).** Designed, unbuilt: pool
 exotics that spend real income against the real price curve to hand-buy a
-tier. Price geometry brakes them naturally; they make cst immortal (cheaper
+tier. Price geometry brakes them naturally; they make cost immortal (cheaper
 units → machines buy faster, forever). Strong-version risk already known:
 if machine-buying were the ONLY growth engine, price curves damp growth to
 log-of-log sludge — it must sit ON the free-running chain, never replace it.

@@ -23,7 +23,7 @@ function close(a: number, b: number, tol: number, msg: string): void {
   ok(rel <= tol, `${msg} (got ${a}, want ~${b}, rel ${rel.toFixed(4)})`);
 }
 function setLevels(s: GameState, tier: number, stat: Stat, L: number): void {
-  const row = (prog(s).tableau[tier] ??= { val: 0, spd: 0, cst: 0 });
+  const row = (prog(s).tableau[tier] ??= { value: 0, speed: 0, cost: 0 });
   row[stat] = L;
 }
 const lcg = (seed: number) => () => {
@@ -41,7 +41,7 @@ console.log("— cycles: one formula, no piecewise —");
   close(a.runScore, 500, 0.001, "discrete regime pays count × cycles");
 
   const b = freshState(0);
-  setLevels(b, 0, "spd", 24); // mult ×19 → period ~0.263s, below GLOW
+  setLevels(b, 0, "speed", 24); // mult ×19 → period ~0.263s, below GLOW
   const tb = b.tiers[0]!;
   tb.count = 10; tb.bought = 10; tb.phase = 0;
   ok(period(b, 0) < GLOW_PERIOD_S, "test tier is in glow regime");
@@ -95,34 +95,34 @@ console.log("— pool sculpting —");
   s.score = 1e9;
   buyTier(s, 0, 30); // crosses 25 milestone
   const pool0 = s.pool[0]!;
-  // cst is per DOUBLING of the stake, not per unit: 0 -> 30 bought is
+  // cost is per DOUBLING of the stake, not per unit: 0 -> 30 bought is
   // log2(31) doublings. Linear-per-unit let a tier you had made cheap bury
   // every other card in the pool.
-  close(pool0.cst, 20 * Math.log2(31), 1e-9, "buys write cst weight per doubling");
-  close(pool0.val, 20, 1e-9, "milestone crossing writes val weight");
+  close(pool0.cost, 20 * Math.log2(31), 1e-9, "buys write cost weight per doubling");
+  close(pool0.value, 20, 1e-9, "milestone crossing writes value weight");
   // Doubling means diminishing: the next 30 units are worth far less weight.
-  const cstAfterFirst = pool0.cst;
+  const cstAfterFirst = pool0.cost;
   buyTier(s, 0, 30);
-  ok(pool0.cst - cstAfterFirst < cstAfterFirst / 2, "further buys write steeply less cst weight");
+  ok(pool0.cost - cstAfterFirst < cstAfterFirst / 2, "further buys write steeply less cost weight");
 
   s.tiers[0]!.phase = 0;
   step(s, 4);
-  // spd is per second watched, so a slow wheel accrues at the same rate as a
+  // speed is per second watched, so a slow wheel accrues at the same rate as a
   // fast one — completions scale as 1/period and starved the deep tiers.
-  close(pool0.spd, 1, 1e-9, "spd weight accrues per second watched");
+  close(pool0.speed, 1, 1e-9, "speed weight accrues per second watched");
   {
     const slow = freshState(0);
     slow.score = 1e9;
     buyTier(slow, 0, 1);
     slow.tiers[1]!.count = 1; // a 10s wheel, five times slower than tier 1
     step(slow, 4);
-    close(slow.pool[1]!.spd, 1, 1e-9, "a slow wheel writes the same spd weight as a fast one");
+    close(slow.pool[1]!.speed, 1, 1e-9, "a slow wheel writes the same speed weight as a fast one");
   }
 
-  setLevels(s, 0, "spd", 24); // glow regime
-  const spdBefore = pool0.spd;
+  setLevels(s, 0, "speed", 24); // glow regime
+  const spdBefore = pool0.speed;
   step(s, 10);
-  close(pool0.spd, spdBefore, 1e-9, "glow closes the spd spigot");
+  close(pool0.speed, spdBefore, 1e-9, "glow closes the speed spigot");
 }
 
 console.log("— pool damping —");
@@ -131,7 +131,7 @@ console.log("— pool damping —");
   s.score = 1e12;
   buyTier(s, 0, 30);
   const raw = poolEntries(s).reduce((a, e) => a + e.w, 0);
-  setLevels(s, 0, "cst", 50);
+  setLevels(s, 0, "cost", 50);
   const damped = poolEntries(s).reduce((a, e) => a + e.w, 0);
   ok(damped < raw, "levels on a tier damp its own draw weight");
   close(damped, raw / (1 + 0.02 * 50), 1e-9, "damping is 1/(1 + POOL_DAMP × levels)");
@@ -142,7 +142,7 @@ console.log("— rising ladder —");
   const s = freshState(0);
   const [t1a] = pickThresholds(s);
   close(threshScale(s), 1, 1e-9, "ladder starts at ×1");
-  const card: Card = { kind: "stat", tier: 0, stat: "val", levels: 1, rarity: 0 };
+  const card: Card = { kind: "stat", tier: 0, stat: "value", levels: 1, rarity: 0 };
   applyPick(s, card); applyPick(s, card);
   close(threshScale(s), Math.pow(1 + 0.12 * 2, 2), 1e-9, "two picks raise the ladder");
   const [t1b] = pickThresholds(s);
@@ -213,12 +213,12 @@ console.log("— reset: phase stays, rest goes —");
 console.log("— scenarios —");
 {
   const s = freshState(0);
-  applyPick(s, { kind: "stat", tier: 0, stat: "val", levels: 3, rarity: 0 });
+  applyPick(s, { kind: "stat", tier: 0, stat: "value", levels: 3, rarity: 0 });
   switchScenario(s, "s2", 0);
   ok(s.tiers.length === 4, "s2 is a 4-tier chain");
-  ok(tableauLevels(s, 0, "val") === 0, "tableau is per-scenario");
+  ok(tableauLevels(s, 0, "value") === 0, "tableau is per-scenario");
   switchScenario(s, "s1", 0);
-  ok(tableauLevels(s, 0, "val") === 3, "switching back restores it");
+  ok(tableauLevels(s, 0, "value") === 3, "switching back restores it");
   ok(visibleTiers(s) >= 1, "at least one tier visible");
 }
 
@@ -270,7 +270,7 @@ console.log("— save round-trip —");
   const s = freshState(0);
   s.score = 1e9;
   buyTier(s, 0, 30);
-  applyPick(s, { kind: "stat", tier: 0, stat: "spd", levels: 4, rarity: 2 });
+  applyPick(s, { kind: "stat", tier: 0, stat: "speed", levels: 4, rarity: 2 });
   s.tiers[0]!.phase = 0.61;
   await persist(s);
   ok(mem.has(SAVE_KEY), "persisted under v3 key");
@@ -278,8 +278,24 @@ console.log("— save round-trip —");
   close(r.score, s.score, 1e-9, "score survives");
   ok(r.tiers[0]!.bought === 30, "bought survives");
   close(r.tiers[0]!.phase, 0.61, 1e-9, "phase survives");
-  ok(tableauLevels(r, 0, "spd") === 4, "tableau survives");
-  close(r.pool[0]!.cst, 20 * Math.log2(31), 1e-9, "pool survives");
+  ok(tableauLevels(r, 0, "speed") === 4, "tableau survives");
+  close(r.pool[0]!.cost, 20 * Math.log2(31), 1e-9, "pool survives");
+
+  // A save written before stats were renamed still carries val/spd/cst. If
+  // revive stops reading the legacy keys, every tableau ever earned silently
+  // zeroes — which looks exactly like a wipe to the player.
+  mem.set(SAVE_KEY, JSON.stringify({
+    scenario: "s1", score: 500, runScore: 0, lastSeen: Date.now(),
+    tiers: [{ count: 3, bought: 30, phase: 0.2, cycles: 0 }],
+    progress: { s1: { tableau: { 0: { val: 7, spd: 4, cst: 2 } }, everBought: [30] } },
+    pool: { 0: { val: 11, spd: 5, cst: 9 } },
+  }));
+  const { state: legacy } = await loadGame(Date.now());
+  ok(tableauLevels(legacy, 0, "value") === 7, "legacy val revives as value");
+  ok(tableauLevels(legacy, 0, "speed") === 4, "legacy spd revives as speed");
+  ok(tableauLevels(legacy, 0, "cost") === 2, "legacy cst revives as cost");
+  close(legacy.pool[0]!.value, 11, 1e-9, "legacy pool val revives");
+  close(legacy.pool[0]!.cost, 9, 1e-9, "legacy pool cst revives");
   const { state: fresh } = await (async () => { mem.set(SAVE_KEY, "{corrupt"); return loadGame(Date.now()); })();
   ok(fresh.score === 0 && fresh.tiers[0]!.count === 1, "corrupt save falls back fresh");
 }

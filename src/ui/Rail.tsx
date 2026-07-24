@@ -220,7 +220,7 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
                   </span>
                 </span>
                 <span className="chips">
-                  {(["spd", "val", "cst"] as const).map((stat) => {
+                  {(["speed", "value", "cost"] as const).map((stat) => {
                     const L = tableauLevels(state, i, stat);
                     return (
                       <span key={stat} className={`chip${L > 0 ? " lit" : ""}`}>

@@ -26,16 +26,16 @@ export const GLOW_PERIOD_S = 0.3;
 /**
  * Pool weight units. All three sources are priced in the same currency so no
  * one stat can out-shout the others by accident of measurement:
- * - val: 20 per milestone crossed (milestone spans double, so this is log-scaled)
- * - cst: 20 per DOUBLING of hand-bought stake (was +1/unit — linear, which let
+ * - value: 20 per milestone crossed (milestone spans double, so this is log-scaled)
+ * - cost: 20 per DOUBLING of hand-bought stake (was +1/unit — linear, which let
  *   cheap tiers bury everything else once cost levels made them cheaper still)
- * - spd: per second spent watching a wheel that hasn't graduated to glow, NOT
+ * - speed: per second spent watching a wheel that hasn't graduated to glow, NOT
  *   per completion — completions scale as 1/period, which handed fast tiers a
  *   flood and starved 640s tiers to nothing.
  */
-export const VAL_PER_MILESTONE = 20;
-export const CST_PER_DOUBLING = 20;
-export const SPD_PER_SEC = 0.25;
+export const VALUE_PER_MILESTONE = 20;
+export const COST_PER_DOUBLING = 20;
+export const SPEED_PER_SEC = 0.25;
 
 /**
  * Draw weight for a tier is divided by (1 + POOL_DAMP × levels already held on

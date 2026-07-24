@@ -54,9 +54,9 @@ process (07). Read docs/00-INDEX.md before making design-level changes.
 - **Runs end by player timing** (layer 1); scenarios end at explicit reach
   goals (layer 2). Ceremony-longer-than-run chaining is a celebrated
   playstyle, not degeneracy.
-- **Pool sculpting is behavioral**: buys → cst weight, milestone crossings →
-  val weight, discrete completions → spd weight (the glow graduation closes
-  the spd spigot itself — this self-limiting is load-bearing, keep it).
+- **Pool sculpting is behavioral**: buys → cost weight, milestone crossings →
+  value weight, discrete completions → speed weight (the glow graduation closes
+  the speed spigot itself — this self-limiting is load-bearing, keep it).
 - **Pick thresholds ride a rising ladder** (×(1+0.12·picks)²) so run length
   stays a live choice as the tableau snowballs.
 - **Offline is preparation, not production**: away time banks draw options

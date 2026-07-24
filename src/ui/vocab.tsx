@@ -10,16 +10,16 @@ import type { BuyAmount, Stat } from "../game/types";
  * and an emoji would import a whole foreign palette.
  */
 export const STAT_NAME: Record<Stat, string> = {
-  spd: "speed",
-  val: "value",
-  cst: "cost",
+  speed: "speed",
+  value: "value",
+  cost: "cost",
 };
 
 /** What a level in this stat actually does, in plain words. */
 export const STAT_EFFECT: Record<Stat, string> = {
-  spd: "cycles faster",
-  val: "pays more",
-  cst: "costs less",
+  speed: "cycles faster",
+  value: "pays more",
+  cost: "costs less",
 };
 
 /**
@@ -31,12 +31,12 @@ export const STAT_EFFECT: Record<Stat, string> = {
 export function StatGlyph({ stat }: { stat: Stat }): JSX.Element {
   return (
     <svg className="sglyph" viewBox="0 0 10 10" aria-hidden focusable="false">
-      {stat === "spd" && (
+      {stat === "speed" && (
         <path d="M1.2 2.2 L4.4 5 L1.2 7.8 M5.4 2.2 L8.6 5 L5.4 7.8" fill="none" strokeWidth="1.4"
           strokeLinecap="round" strokeLinejoin="round" />
       )}
-      {stat === "val" && <path className="solid" d="M5 1.9 L8.6 7.6 L1.4 7.6 Z" strokeWidth="1.2" strokeLinejoin="round" />}
-      {stat === "cst" && <path className="solid" d="M5 8.1 L1.4 2.4 L8.6 2.4 Z" strokeWidth="1.2" strokeLinejoin="round" />}
+      {stat === "value" && <path className="solid" d="M5 1.9 L8.6 7.6 L1.4 7.6 Z" strokeWidth="1.2" strokeLinejoin="round" />}
+      {stat === "cost" && <path className="solid" d="M5 8.1 L1.4 2.4 L8.6 2.4 Z" strokeWidth="1.2" strokeLinejoin="round" />}
     </svg>
   );
 }

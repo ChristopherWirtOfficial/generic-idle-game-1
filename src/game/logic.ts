@@ -1,6 +1,6 @@
 import {
-  BASE_DRAW, CST_PER_DOUBLING, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY,
-  NUM_CLAMP, POOL_DAMP, RARITY_LEVELS, RARITY_WEIGHT, SPD_PER_SEC, VAL_PER_MILESTONE, scenarioById,
+  BASE_DRAW, COST_PER_DOUBLING, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY,
+  NUM_CLAMP, POOL_DAMP, RARITY_LEVELS, RARITY_WEIGHT, SPEED_PER_SEC, VALUE_PER_MILESTONE, scenarioById,
 } from "./constants";
 import type { BuyAmount, Card, DrawOffer, GameState, ScenarioDef, ScenarioProgress, Stat, TierState } from "./types";
 
@@ -107,14 +107,14 @@ export function unitValue(s: GameState, i: number): number {
   return def.baseValue
     * def.efficiency
     * Math.pow(scen(s).milestoneMult, milestoneLevel(s, i))
-    * tableauMult(s, i, "val");
+    * tableauMult(s, i, "value");
 }
 
 /** Effective seconds per cycle. Speed divides the period — no floor, ever. */
 export function period(s: GameState, i: number): number {
   const def = scen(s).tiers[i];
   if (!def) return Infinity;
-  return def.basePeriod / tableauMult(s, i, "spd");
+  return def.basePeriod / tableauMult(s, i, "speed");
 }
 
 /** Average output per second (used for display and the offline trickle). */
@@ -136,7 +136,7 @@ export function tierCost(s: GameState, i: number, n = 1): number {
   const st = s.tiers[i];
   if (!def || !st || n <= 0) return Infinity;
   const g = def.costGrowth;
-  const first = (def.baseCost / tableauMult(s, i, "cst")) * Math.pow(g, st.bought);
+  const first = (def.baseCost / tableauMult(s, i, "cost")) * Math.pow(g, st.bought);
   const total = (first * (Math.pow(g, n) - 1)) / (g - 1);
   return Number.isFinite(total) ? Math.ceil(total) : Infinity;
 }
@@ -146,7 +146,7 @@ export function maxAffordable(s: GameState, i: number): number {
   const st = s.tiers[i];
   if (!def || !st) return 0;
   const g = def.costGrowth;
-  const first = (def.baseCost / tableauMult(s, i, "cst")) * Math.pow(g, st.bought);
+  const first = (def.baseCost / tableauMult(s, i, "cost")) * Math.pow(g, st.bought);
   if (s.score < Math.ceil(first)) return 0;
   let n = Math.max(1, Math.floor(Math.log((s.score * (g - 1)) / first + 1) / Math.log(g)));
   while (n > 0 && tierCost(s, i, n) > s.score) n--;
@@ -172,12 +172,12 @@ export function buyTier(s: GameState, i: number, n: number): boolean {
   // of the stake, not per unit. Per-unit was linear, so a tier you had made
   // cheap got bought more, which made it cheaper, which buried every other
   // card in the pool. Doubling matches how milestones already scale.
-  addPool(s, i, "cst", CST_PER_DOUBLING * Math.log2((st.bought + 1) / (boughtBefore + 1)));
+  addPool(s, i, "cost", COST_PER_DOUBLING * Math.log2((st.bought + 1) / (boughtBefore + 1)));
   return true;
 }
 
 export function addPool(s: GameState, tier: number, stat: Stat, w: number): void {
-  const row = (s.pool[tier] ??= { val: 0, spd: 0, cst: 0 });
+  const row = (s.pool[tier] ??= { value: 0, speed: 0, cost: 0 });
   row[stat] += w;
 }
 
@@ -203,7 +203,7 @@ export function step(s: GameState, dtSec: number): void {
     // Per SECOND WATCHED, not per completion: completions scale as 1/period, so
     // the old rule flooded 2s tiers and starved 640s tiers to nothing, leaving
     // speed unofferable on exactly the tiers that most needed it.
-    if (T >= GLOW_PERIOD_S) addPool(s, i, "spd", dtSec * SPD_PER_SEC);
+    if (T >= GLOW_PERIOD_S) addPool(s, i, "speed", dtSec * SPEED_PER_SEC);
     const adv = dtSec / T;
     const total = st.phase + adv;
     const completions = Math.floor(total);
@@ -242,7 +242,7 @@ export function clampState(s: GameState): void {
 /** Milestone crossings write value-card weight. */
 function noteMilestones(s: GameState, i: number, before: number): void {
   const after = milestoneLevel(s, i);
-  if (after > before) addPool(s, i, "val", (after - before) * VAL_PER_MILESTONE);
+  if (after > before) addPool(s, i, "value", (after - before) * VALUE_PER_MILESTONE);
 }
 
 /** The ladder rises as the tableau grows, so run length stays a live choice. */
@@ -306,7 +306,7 @@ export function visibleTiers(s: GameState): number {
  */
 export function tierDamp(s: GameState, tier: number): number {
   const row = prog(s).tableau[tier];
-  const levels = row ? row.val + row.spd + row.cst : 0;
+  const levels = row ? row.value + row.speed + row.cost : 0;
   return 1 / (1 + POOL_DAMP * levels);
 }
 
@@ -317,7 +317,7 @@ export function poolEntries(s: GameState): Array<{ tier: number; stat: Stat; w: 
   for (const [tierStr, row] of Object.entries(s.pool)) {
     const tier = Number(tierStr);
     const damp = tierDamp(s, tier);
-    for (const stat of ["val", "spd", "cst"] as const) {
+    for (const stat of ["value", "speed", "cost"] as const) {
       if (row[stat] > 0) out.push({ tier, stat, w: row[stat] * damp });
     }
   }
@@ -343,7 +343,7 @@ export function rollDraw(s: GameState, rand: () => number): DrawOffer {
     }
     const totalW = entries.reduce((a, e) => a + e.w, 0);
     if (totalW <= 0 || entries.length === 0) {
-      cards.push({ kind: "stat", tier: 0, stat: "val", levels: RARITY_LEVELS[0], rarity: 0 });
+      cards.push({ kind: "stat", tier: 0, stat: "value", levels: RARITY_LEVELS[0], rarity: 0 });
       continue;
     }
     let roll = rand() * totalW;
@@ -362,7 +362,7 @@ export function applyPick(s: GameState, card: Card): void {
   if (card.kind === "flywheel") { p.flywheel = true; return; }
   if (card.kind === "hotstart") { p.hotstart += card.levels; return; }
   if (card.tier < 0 || !card.stat) return;
-  const row = (p.tableau[card.tier] ??= { val: 0, spd: 0, cst: 0 });
+  const row = (p.tableau[card.tier] ??= { value: 0, speed: 0, cost: 0 });
   row[card.stat] += card.levels;
 }
 

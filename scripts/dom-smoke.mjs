@@ -24,12 +24,12 @@ const seed = {
   ],
   progress: {
     s1: {
-      tableau: { 0: { val: 2, spd: 0, cst: 0 } }, hotstart: 0, flywheel: false,
+      tableau: { 0: { value: 2, speed: 0, cost: 0 } }, hotstart: 0, flywheel: false,
       resets: 3, picks: 0, bestRun: 6e7, totalScore: 9e7, beaten: false,
       everBought: [30, 0, 0, 0, 0, 0, 0, 0],
     },
   },
-  pool: { 0: { val: 40, spd: 6, cst: 30 } },
+  pool: { 0: { value: 40, speed: 6, cost: 30 } },
   bankedDraws: 0,
   startedAt: Date.now() - 3600_000,
   lastSeen: Date.now() - 5_000,
@@ -153,11 +153,11 @@ check("run zeroed after reset", byText(".scoresub span", "run 0") !== undefined,
 byText(".tabbar button", "MORE").click();
 await sleep(200);
 check("more tab: picks counted", byText(".kv", "picks taken")?.textContent.includes("2"), byText(".kv", "picks taken")?.textContent);
-const cheatPlus = document.querySelector('[aria-label="cheat 1 val +"]');
+const cheatPlus = document.querySelector('[aria-label="cheat 1 value +"]');
 check("cheat panel renders", cheatPlus !== null);
 cheatPlus.click();
 await sleep(50);
-check("cheat raises the level in place", document.querySelector('[aria-label="cheat 1 val +"]').parentElement.querySelector(".cl").textContent === "3");
+check("cheat raises the level in place", document.querySelector('[aria-label="cheat 1 value +"]').parentElement.querySelector(".cl").textContent === "3");
 check("more tab: scenario 2 locked", byText(".scenrow", "locked") !== undefined);
 
 store.delete("gig1:save3");

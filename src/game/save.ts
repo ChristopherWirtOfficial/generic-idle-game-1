@@ -52,6 +52,16 @@ function backend(): StorageLike {
 const posNum = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
 
+/**
+ * Stats were once written as val/spd/cst. Saves are never mutated in place, so
+ * a save written before the rename still carries the old keys — read both, new
+ * name first. Dropping this silently zeroes every tableau ever earned.
+ */
+const LEGACY_STAT: Record<Stat, string> = { value: "val", speed: "spd", cost: "cst" };
+
+const statNum = (row: Record<string, unknown>, stat: Stat): number | null =>
+  posNum(row[stat]) ?? posNum(row[LEGACY_STAT[stat]]);
+
 function reviveTier(raw: unknown): TierState {
   const t: TierState = { count: 0, bought: 0, phase: 0, cycles: 0 };
   if (typeof raw !== "object" || raw === null) return t;
@@ -87,9 +97,9 @@ function reviveProgress(raw: unknown, tierCount: number): ScenarioProgress {
       const tier = Number(k);
       if (!Number.isInteger(tier) || typeof row !== "object" || row === null) continue;
       const rr = row as Record<string, unknown>;
-      const out: Record<Stat, number> = { val: 0, spd: 0, cst: 0 };
-      for (const stat of ["val", "spd", "cst"] as const) {
-        const v = posNum(rr[stat]);
+      const out: Record<Stat, number> = { value: 0, speed: 0, cost: 0 };
+      for (const stat of ["value", "speed", "cost"] as const) {
+        const v = statNum(rr, stat);
         if (v !== null) out[stat] = Math.floor(v);
       }
       p.tableau[tier] = out;
@@ -123,9 +133,9 @@ function reviveState(raw: unknown): GameState {
       if (!Number.isInteger(tier) || typeof row !== "object" || row === null) continue;
       const rr = row as Record<string, unknown>;
       s.pool[tier] = {
-        val: posNum(rr.val) ?? 0,
-        spd: posNum(rr.spd) ?? 0,
-        cst: posNum(rr.cst) ?? 0,
+        value: statNum(rr, "value") ?? 0,
+        speed: statNum(rr, "speed") ?? 0,
+        cost: statNum(rr, "cost") ?? 0,
       };
     }
   }

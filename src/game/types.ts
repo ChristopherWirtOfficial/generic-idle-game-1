@@ -27,7 +27,7 @@ export interface ScenarioDef {
   milestoneMult: number;
 }
 
-export type Stat = "val" | "spd" | "cst";
+export type Stat = "value" | "speed" | "cost";
 
 /** Purchase quantities. "milestone" buys exactly up to the next hand-bought milestone. */
 export type BuyAmount = 1 | 10 | "max" | "milestone";
@@ -45,7 +45,7 @@ export interface TierState {
   bought: number;
   /** Cycle phase in [0,1). Persists through reset. */
   phase: number;
-  /** Completions witnessed this run (drives spd pool weight). */
+  /** Completions witnessed this run (drives speed pool weight). */
   cycles: number;
 }
 

@@ -41,13 +41,40 @@ spinning. Frozen wheels resume from their held phase when you own one.
 
 ## Pool sculpting (behavioral triad)
 
-Per-run draw weights written by play, reset clears: buys → cst weight
-(+1/unit), milestone crossings → val (+20 each), discrete cycle completions
-→ spd (+0.5 each) — but spd ONLY accrues while period ≥ GLOW threshold. The
-glow graduation closes its own spigot. This self-limiting is load-bearing:
-without it the sim hit spd ×Infinity (completions/sec is a physics quantity
-that feeds itself). Visible as the RESET-tab histogram: IG1's folklore
-shallow-reset trick, moved into the interface as the strategy surface.
+Per-run draw weights written by play, reset clears. All three sources are
+priced in the SAME currency, or one out-shouts the others by accident of
+measurement:
+- buys → cost weight, 20 per DOUBLING of hand-bought stake
+- milestone crossings → value, 20 each (spans double, so already log-scaled)
+- time watching an unglowed wheel → speed, 0.25/sec
+
+Speed ONLY accrues while period ≥ GLOW threshold; the glow graduation closes
+its own spigot. This self-limiting is load-bearing: without it the sim hit
+speed ×Infinity (completions/sec is a physics quantity that feeds itself).
+
+The units were originally cost +1/unit and speed +0.5/completion, and both
+were wrong in the same way — they measured a thing that scales with how
+CHEAP or how FAST a tier already is. Cost per unit meant a tier you had made
+cheap got bought more, wrote more weight, and was offered more cost cards,
+making it cheaper still: a 79%-cost monoculture by 180 sim-minutes. Speed
+per completion scales as 1/period, so 2s tiers drowned in speed weight while
+640s tiers got ~0 — speed was unofferable on exactly the tiers that needed
+it (0.6% of offers). Per-doubling and per-second-watched are the same
+quantities measured on a scale that doesn't self-amplify.
+
+**Per-tier damping.** A tier's weight is divided by (1 + POOL_DAMP × levels
+already held on that tier), POOL_DAMP 0.02. The raw loop is positive
+feedback; this makes it negative, so the pool leans elsewhere as your stake
+in a tier deepens — which is what you want, since additive levels are worth
+progressively less to a tier you've already built. Damping is per TIER, not
+per (tier,stat), so it never refuses to sell you the specific line you're
+building. `poolEntries` applies it, so the histogram shows real odds.
+
+Cost, honestly: damping is slower. Tier 3 24m→31m, tier 6 62m→78m, best run
+at 150m 1.2e14→7.1e13. POOL_DAMP is the dial.
+
+Visible as the RESET-tab histogram: IG1's folklore shallow-reset trick,
+moved into the interface as the strategy surface.
 
 ## Draws and the tableau
 
@@ -115,7 +142,7 @@ Three separate playtest bugs were the display lying: prices shown floored
 while charging fractions (fix: economy ceils, integer prices), 1.75
 unit-value shown as "1" (fix: fmtVal, exact small values), sweeping wheels
 on unowned tiers. The law: what the instrument shows is what is true.
-Chips show resulting multipliers (val L1 ×2) so levels are legible.
+Chips show resulting multipliers (value L1 ×2) so levels are legible.
 
 ## Ceremony
 

@@ -23,10 +23,10 @@ function autoPick(offer) {
   const period0 = C.period(s, 0);
   const by = (pred) => offer.cards.filter(pred).sort((a, b) => b.levels - a.levels)[0];
   let pick =
-    (period0 > 1 && by((c) => c.kind === "stat" && c.tier === 0 && c.stat === "spd")) ||
-    by((c) => c.kind === "stat" && c.tier === 0 && c.stat === "val") ||
+    (period0 > 1 && by((c) => c.kind === "stat" && c.tier === 0 && c.stat === "speed")) ||
+    by((c) => c.kind === "stat" && c.tier === 0 && c.stat === "value") ||
     by((c) => c.kind === "hotstart") ||
-    by((c) => c.kind === "stat" && c.stat === "val") ||
+    by((c) => c.kind === "stat" && c.stat === "value") ||
     by((c) => c.kind === "stat") ||
     offer.cards[0];
   return pick;
@@ -82,8 +82,8 @@ for (let t = 0; t < HOURS * 3600; t++) {
   }
   if (t % 1800 === 0 && t > 0) {
     const p = C.prog(s);
-    const t0m = p.tableau[0] ?? { val: 0, spd: 0, cst: 0 };
-    log.push([t, `--- resets ${resets}, picks ${picksTaken}, t0 L[s${t0m.spd} v${t0m.val} c${t0m.cst}], best ${C.prog(s).bestRun.toExponential(1)}, period0 ${C.period(s, 0).toFixed(2)}s, thresh1 ${C.pickThresholds(s)[0].toExponential(1)}, deepest ${Math.max(0, ...[...seenTier]) + 1}`]);
+    const t0m = p.tableau[0] ?? { value: 0, speed: 0, cost: 0 };
+    log.push([t, `--- resets ${resets}, picks ${picksTaken}, t0 L[s${t0m.speed} v${t0m.value} c${t0m.cost}], best ${C.prog(s).bestRun.toExponential(1)}, period0 ${C.period(s, 0).toFixed(2)}s, thresh1 ${C.pickThresholds(s)[0].toExponential(1)}, deepest ${Math.max(0, ...[...seenTier]) + 1}`]);
   }
 }
 const late = resetDurations.slice(-8);
