@@ -1,6 +1,6 @@
 import {
   BASE_DRAW, COST_PER_DOUBLING, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY,
-  NUM_CLAMP, POOL_ALPHA, POOL_CAP, POOL_DAMP, POOL_FLOOR, RARITY_LEVELS, RARITY_WEIGHT, SPEED_PER_SEC,
+  NEED_P, NEED_TIER_P, NUM_CLAMP, POOL_ALPHA, POOL_CAP, POOL_FLOOR, RARITY_LEVELS, RARITY_WEIGHT, SPEED_PER_SEC,
   VALUE_PER_MILESTONE, scenarioById,
 } from "./constants";
 import { D, Decimal, ZERO, isFiniteD } from "./num";
@@ -317,15 +317,18 @@ export function visibleTiers(s: GameState): number {
 // ---------- Draws ----------
 
 /**
- * How much a tier's earned weight is worth once you already hold levels there.
- * Diminishing by design: you want fewer cards for a tier the deeper you are in
- * it, and without this the cost loop feeds itself (cheaper → bought more →
- * more weight → offered more → cheaper).
+ * How much a LINE's earned weight is worth given what you already hold.
+ *
+ * Two factors. The tier factor is gentle and answers "am I deep in this tier";
+ * the cell factor is sharp and answers "have I already been given THIS line".
+ * Per-tier alone was perverse: 200 tier-1 cost levels suppressed tier-1 value
+ * just as hard, so the starved line was punished for the gorged one.
  */
-export function tierDamp(s: GameState, tier: number): number {
+export function lineNeed(s: GameState, tier: number, stat: Stat): number {
   const row = prog(s).tableau[tier];
-  const levels = row ? row.value + row.speed + row.cost : 0;
-  return 1 / (1 + POOL_DAMP * levels);
+  const tierLevels = row ? row.value + row.speed + row.cost : 0;
+  const cellLevels = row?.[stat] ?? 0;
+  return (1 / Math.pow(1 + tierLevels, NEED_TIER_P)) * (1 / Math.pow(1 + cellLevels, NEED_P));
 }
 
 /**
@@ -342,8 +345,8 @@ export function poolSlots(s: GameState): Array<{ tier: number; stat: Stat; w: nu
     const row = s.pool[tier];
     const wrote = row !== undefined && (row.value > 0 || row.speed > 0 || row.cost > 0);
     if (!wrote && !tierKnown(s, tier)) continue;
-    const damp = tierDamp(s, tier);
     for (const stat of ["value", "speed", "cost"] as const) {
+      const damp = lineNeed(s, tier, stat);
       out.push({ tier, stat, w: (row?.[stat] ?? 0) * damp, damp });
     }
   }

@@ -12,7 +12,7 @@ const C = await import("../.simtmp/core.js");
 const HOURS = Number(process.argv[2] ?? 3);
 const RESET_AT_PICKS = Number(process.argv[3] ?? 1);
 
-let seed = 12345;
+let seed = Number(process.argv[5] ?? 12345);
 const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
 
 const s = C.freshState(0);

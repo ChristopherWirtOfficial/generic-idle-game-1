@@ -229,7 +229,12 @@ describe("ceremony", () => {
     await sleep(400);
 
     expect($(".veil")).toBeNull();
-    expect(byText(".scoresub span", "run 0")).toBeDefined();
+    // The run is zeroed, but tier 1 starts paying immediately, so pinning the
+    // literal "run 0" just races the first payout. Assert the collapse instead:
+    // it was 5e7 before the reset.
+    const runText = byText(".scoresub span", "run")!.textContent!;
+    const runValue = Number(runText.replace(/[^0-9.]/g, "")) || 0;
+    expect(runValue).toBeLessThan(1e4);
   });
 });
 

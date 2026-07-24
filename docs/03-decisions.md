@@ -114,12 +114,30 @@ Three changes, all in the mapping, none in the sources:
 The floor damps. A flat floor is a promise that never diminishes, and a
 promise that never diminishes is a focus engine — pour every pick into one
 line and the pool keeps handing it back at full odds forever. The floor
-slice is shared along per-tier damping like every other weight, and
-POOL_DAMP went 0.02→0.08 so it bites hard enough to be felt against it.
+slice is damped like every other weight.
+
+**Need is per LINE, not per tier** (NEED_TIER_P 0.25 gentle, NEED_P 2 sharp;
+replaces POOL_DAMP). Per-tier damping had a consequence nobody intended: a
+veteran's ~200 tier-1 COST levels shrank tier-1 VALUE by exactly as much, so
+the line you had starved was punished for the line you had gorged. That is
+the mechanical answer to "tier 1 value is one of the biggest income drivers
+and I never get it". Three of five independent explorations arrived at this
+same line of code. Sources were repriced alongside it (value 20→40, speed
+0.25→0.5) so the floor isn't doing all the work against a 90%-cost raw
+signal.
+
+METHOD NOTE, worth more than the constants: the recommended speed price was
+0.75, and at 0.75 the sim collapsed to 34 resets against 200 at 0.5. A
+single-seed sweep also read as bimodal "stalls" that turned out to be an
+artifact of WHICH checkpoint printed — at 30 minutes the economy is on a
+snowball-ignition knife-edge, so 30m is a bad place to measure. Tier times
+are the robust signal. Sweep, don't adopt.
 
 Cost, honestly, and it is not small: giving the veteran the levers they were
-asking for compounds through the chain. s1's 1e15 goal falls at ~2h25
-against ~6h before. This was swept across alpha 0.25–1.0, floor 0–0.55, cap
+asking for compounds through the chain. Measured on the shipped build: tier 3
+17m27 (was 31m10), tier 6 47m19 (was 78m11), tier 7 96m20 (never reached in
+150m before), and 1e15 lands around 2.5h against the ~6-8h it was designed
+for. This was swept across alpha 0.25–1.0, floor 0–0.55, cap
 1.6–off, damp 0.02–0.5, THRESH_A 0.12–0.75 and THRESH_B 2–4: the goal clock
 never left 82–147 minutes. There is no draw-side dial that restores six
 hours, because the compression is the fix working. If the arc matters more

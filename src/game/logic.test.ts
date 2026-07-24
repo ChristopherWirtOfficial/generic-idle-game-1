@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BANK_CAP, BANK_MS, BASE_DRAW, GLOW_PERIOD_S, LEVEL_POTENCY, NUM_CLAMP, POOL_ALPHA, POOL_CAP,
-  POOL_DAMP, POOL_FLOOR, TRICKLE_S,
+  COST_PER_DOUBLING, NEED_P, NEED_TIER_P, POOL_FLOOR, SPEED_PER_SEC, TRICKLE_S, VALUE_PER_MILESTONE,
 } from "./constants";
 import {
   applyPick, buyTier, clampState, doReset, liquidationValue, maxAffordable, milestoneLevel,
@@ -99,8 +99,8 @@ describe("pool sculpting", () => {
     s.score = D(1e9);
     buyTier(s, 0, 30); // also crosses the 25 milestone
     const pool0 = s.pool[0]!;
-    expect(pool0.cost).toBeCloseTo(20 * Math.log2(31), 9);
-    expect(pool0.value).toBeCloseTo(20, 9);
+    expect(pool0.cost).toBeCloseTo(COST_PER_DOUBLING * Math.log2(31), 9);
+    expect(pool0.value).toBeCloseTo(VALUE_PER_MILESTONE, 9);
 
     const afterFirst = pool0.cost;
     buyTier(s, 0, 30);
@@ -113,7 +113,7 @@ describe("pool sculpting", () => {
     buyTier(s, 0, 1);
     s.tiers[0]!.phase = 0;
     step(s, 4);
-    expect(s.pool[0]!.speed).toBeCloseTo(1, 9);
+    expect(s.pool[0]!.speed).toBeCloseTo(4 * SPEED_PER_SEC, 9);
 
     // A 10s wheel is five times slower than tier 1 and must still earn the same
     // weight — per-completion starved the deep tiers to nothing.
@@ -122,7 +122,7 @@ describe("pool sculpting", () => {
     buyTier(slow, 0, 1);
     slow.tiers[1]!.count = D(1);
     step(slow, 4);
-    expect(slow.pool[1]!.speed).toBeCloseTo(1, 9);
+    expect(slow.pool[1]!.speed).toBeCloseTo(4 * SPEED_PER_SEC, 9);
   });
 
   it("closes its own speed spigot at glow", () => {
@@ -144,7 +144,8 @@ describe("pool sculpting", () => {
     const raw = poolSlots(s).find((e) => e.tier === 0 && e.stat === "cost")!.w;
     setLevels(s, 0, "cost", 50);
     const damped = poolSlots(s).find((e) => e.tier === 0 && e.stat === "cost")!.w;
-    expect(damped).toBeCloseTo(raw / (1 + POOL_DAMP * 50), 9);
+    // Both factors apply: gentle on the tier's total, sharp on this line's own.
+    expect(damped).toBeCloseTo(raw / (Math.pow(51, NEED_TIER_P) * Math.pow(51, NEED_P)), 9);
     // ...and the damping reaches the floor slice too, or the floor would be an
     // undiminishing promise and so a free focus engine.
     const t0 = poolEntries(s).filter((e) => e.tier === 0);
