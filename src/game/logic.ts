@@ -214,7 +214,7 @@ export function visibleTiers(s: GameState): number {
   for (let i = p.everBought.length - 1; i >= 0; i--) {
     if ((p.everBought[i] ?? 0) > 0 || (s.tiers[i]?.bought ?? 0) > 0) { deepest = i; break; }
   }
-  return Math.min(scen(s).tiers.length, deepest + 2);
+  return Math.min(scen(s).tiers.length, Math.max(deepest, 0) + 2);
 }
 
 // ---------- Draws ----------

@@ -1,165 +1,171 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ACHIEVEMENTS, SAVE_INTERVAL_MS, TICK_MS } from "./game/constants";
-import {
-  buyTier, buyUpgrade, checkAchievements, doCrunch, dustPerSecond,
-  hasAutoPress, press, step,
-} from "./game/logic";
-import { fmt, fmtRate } from "./game/format";
-import { eraseSave, loadGame, persist } from "./game/save";
+import { SAVE_INTERVAL_MS, TICK_MS } from "./game/constants";
+import { applyPick, buyTier, doReset, prog, rollDraw, scen, scoreRate, step, switchScenario } from "./game/logic";
 import { freshState } from "./game/state";
-import type { GameState, OfflineReport } from "./game/types";
+import { eraseSave, loadGame, persist } from "./game/save";
+import { fmt, fmtRate } from "./game/format";
+import type { Card, DrawOffer, GameState, OfflineReport } from "./game/types";
 import { CSS } from "./ui/styles";
-import { Sky, type Floaty } from "./ui/Sky";
-import { BuildPanel, type BuyAmount } from "./ui/BuildPanel";
-import { ImprovePanel } from "./ui/ImprovePanel";
-import { CrunchPanel } from "./ui/CrunchPanel";
+import { Rail } from "./ui/Rail";
+import { BuyPanel, type BuyAmount } from "./ui/BuyPanel";
+import { ResetPanel } from "./ui/ResetPanel";
+import { CardsOverlay } from "./ui/CardsOverlay";
 import { MorePanel } from "./ui/MorePanel";
 import { TabBar, type TabId } from "./ui/TabBar";
-import { Toast } from "./ui/Toast";
 import { OfflineModal } from "./ui/OfflineModal";
-
-const achById = new Map(ACHIEVEMENTS.map((a) => [a.id, a]));
 
 export default function App(): JSX.Element {
   const stateRef = useRef<GameState | null>(null);
+  const [ready, setReady] = useState(false);
   const [, setFrame] = useState(0);
-  const bump = useCallback(() => setFrame((f) => f + 1), []);
+  const bump = useCallback(() => setFrame((f) => (f + 1) % 1_000_000), []);
 
-  const [tab, setTab] = useState<TabId>("build");
+  const [tab, setTab] = useState<TabId>("buy");
   const [sel, setSel] = useState(0);
   const [amount, setAmount] = useState<BuyAmount>(1);
+  const [offer, setOffer] = useState<DrawOffer | null>(null);
   const [offline, setOffline] = useState<OfflineReport | null>(null);
-  const [floaties, setFloaties] = useState<Floaty[]>([]);
-  const floatyId = useRef(0);
-  const [toastQ, setToastQ] = useState<string[]>([]);
-  const autoAcc = useRef(0);
+  const [banner, setBanner] = useState<string | null>(null);
+  const bannerTimer = useRef<number | null>(null);
+  const beatenSeen = useRef(false);
 
-  // Load once.
+  const toast = useCallback((msg: string) => {
+    setBanner(msg);
+    if (bannerTimer.current !== null) window.clearTimeout(bannerTimer.current);
+    bannerTimer.current = window.setTimeout(() => setBanner(null), 4200);
+  }, []);
+
   useEffect(() => {
-    let live = true;
+    let alive = true;
     void loadGame().then(({ state, offline: rep }) => {
-      if (!live) return;
+      if (!alive) return;
       stateRef.current = state;
+      beatenSeen.current = prog(state).beaten;
       if (rep) setOffline(rep);
-      bump();
+      setReady(true);
     });
-    return () => { live = false; };
-  }, [bump]);
+    return () => { alive = false; };
+  }, []);
 
-  // Tick.
   useEffect(() => {
-    const iv = setInterval(() => {
+    if (!ready) return;
+    let last = performance.now();
+    const id = window.setInterval(() => {
       const s = stateRef.current;
       if (!s) return;
-      step(s, TICK_MS / 1000);
-      if (hasAutoPress(s)) {
-        autoAcc.current += TICK_MS / 1000;
-        while (autoAcc.current >= 1) { autoAcc.current -= 1; press(s); }
+      const now = performance.now();
+      const dt = Math.min(2, (now - last) / 1000);
+      last = now;
+      step(s, dt);
+      if (!beatenSeen.current && prog(s).beaten) {
+        beatenSeen.current = true;
+        toast(`SCENARIO ${scen(s).name} BEAT — ${fmt(scen(s).goal)} in one run. Next opened.`);
       }
-      const fresh = checkAchievements(s);
-      if (fresh.length > 0) setToastQ((q) => [...q, ...fresh]);
       bump();
     }, TICK_MS);
-    return () => clearInterval(iv);
-  }, [bump]);
+    return () => window.clearInterval(id);
+  }, [ready, bump, toast]);
 
-  // Autosave + leave handlers.
   useEffect(() => {
-    const save = () => { const s = stateRef.current; if (s) void persist(s); };
-    const iv = setInterval(save, SAVE_INTERVAL_MS);
-    const onVis = () => { if (document.visibilityState === "hidden") save(); };
+    if (!ready) return;
+    const save = (): void => { const s = stateRef.current; if (s) void persist(s); };
+    const id = window.setInterval(save, SAVE_INTERVAL_MS);
+    const onVis = (): void => { if (document.visibilityState === "hidden") save(); };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("beforeunload", save);
     return () => {
-      clearInterval(iv);
+      window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("beforeunload", save);
     };
-  }, []);
+  }, [ready]);
 
-  // Toast queue: show head for 2.4s.
-  useEffect(() => {
-    if (toastQ.length === 0) return;
-    const t = setTimeout(() => setToastQ((q) => q.slice(1)), 2400);
-    return () => clearTimeout(t);
-  }, [toastQ]);
-
-  const onPress = useCallback((x: number, y: number) => {
-    const s = stateRef.current;
-    if (!s) return;
-    const v = press(s);
-    const id = ++floatyId.current;
-    setFloaties((fs) => [...fs.slice(-11), { id, x, y, text: `+${fmt(v)}` }]);
-    setTimeout(() => setFloaties((fs) => fs.filter((f) => f.id !== id)), 900);
-    bump();
-  }, [bump]);
-
-  const onBuyTier = useCallback((i: number, n: number) => {
+  const onBuy = useCallback((i: number, n: number) => {
     const s = stateRef.current;
     if (!s) return;
     if (buyTier(s, i, n)) { void persist(s); bump(); }
   }, [bump]);
 
-  const onBuyUpgrade = useCallback((id: string) => {
+  const onReset = useCallback(() => {
     const s = stateRef.current;
-    if (!s) return;
-    if (buyUpgrade(s, id)) { void persist(s); bump(); }
+    if (!s || offer) return;
+    setOffer(rollDraw(s, Math.random));
+  }, [offer]);
+
+  const onCeremonyDone = useCallback((picked: Card[]) => {
+    const s = stateRef.current;
+    if (!s) { setOffer(null); return; }
+    for (const c of picked) applyPick(s, c);
+    doReset(s);
+    setOffer(null);
+    setSel(0);
+    setTab("buy");
+    void persist(s);
+    bump();
   }, [bump]);
 
-  const onCrunch = useCallback(() => {
+  const onSwitch = useCallback((id: string) => {
     const s = stateRef.current;
     if (!s) return;
-    if (doCrunch(s) > 0) {
-      setSel(0); setTab("build"); setAmount(1);
-      void persist(s);
-      bump();
-    }
+    switchScenario(s, id);
+    beatenSeen.current = prog(s).beaten;
+    setSel(0);
+    setTab("buy");
+    void persist(s);
+    bump();
   }, [bump]);
 
   const onErase = useCallback(() => {
     void eraseSave().then(() => {
-      stateRef.current = freshState();
-      setSel(0); setTab("build"); setAmount(1); setOffline(null); setToastQ([]);
+      const s = freshState();
+      stateRef.current = s;
+      beatenSeen.current = false;
+      setSel(0);
+      setTab("buy");
+      setOffer(null);
       bump();
     });
   }, [bump]);
 
   const s = stateRef.current;
-  if (!s) {
+  if (!ready || !s) {
     return (
       <>
         <style>{CSS}</style>
-        <div className="app"><div className="sky"><div className="readout"><div className="dustlabel">gathering the sky…</div></div></div></div>
+        <div className="app" style={{ alignItems: "center", justifyContent: "center", color: "#8B8E96", fontSize: 13 }}>
+          warming the wheels…
+        </div>
       </>
     );
   }
 
-  const dps = dustPerSecond(s);
-  const headToast = toastQ[0] !== undefined ? achById.get(toastQ[0]) : undefined;
-
+  const p = prog(s);
   return (
     <>
       <style>{CSS}</style>
       <div className="app">
-        <Sky state={s} floaties={floaties} onPress={onPress}>
-          <div className="dustlabel">Stardust</div>
-          <div className="dustnum">{fmt(s.dust)}</div>
-          <div className="rate"><b>{fmtRate(dps)}</b> per second</div>
-          {s.singularities > 0 && (
-            <div className="singchip">◉ {fmt(s.singularities)} Singularit{s.singularities === 1 ? "y" : "ies"}</div>
-          )}
-        </Sky>
+        <div className="display">
+          <Rail state={s} sel={sel} onSelect={(i) => { setSel(i); setTab("buy"); }} />
+          <div className="scoreblock">
+            <div className="scorenum">{fmt(s.score)}</div>
+            <div className="scoresub">
+              <span><b>{fmtRate(scoreRate(s))}</b>/s</span>
+              <span>run <b>{fmt(s.runScore)}</b></span>
+              <span>best <b>{fmt(p.bestRun)}</b></span>
+            </div>
+          </div>
+        </div>
         <div className="deck" style={{ position: "relative" }}>
-          {headToast && <Toast title={headToast.name} body={headToast.blurb} />}
-          {tab === "build" && (
-            <BuildPanel state={s} sel={sel} setSel={setSel} amount={amount} setAmount={setAmount} onBuy={onBuyTier} />
+          {banner && <div className="banner"><b>{banner.split(" — ")[0]}</b>{banner.includes(" — ") ? banner.slice(banner.indexOf(" — ") + 3) : ""}</div>}
+          {tab === "buy" && (
+            <BuyPanel state={s} sel={sel} setSel={setSel} amount={amount} setAmount={setAmount} onBuy={onBuy} />
           )}
-          {tab === "improve" && <ImprovePanel state={s} onBuy={onBuyUpgrade} />}
-          {tab === "crunch" && <CrunchPanel state={s} onCrunch={onCrunch} />}
-          {tab === "more" && <MorePanel state={s} onErase={onErase} />}
+          {tab === "reset" && <ResetPanel state={s} onReset={onReset} />}
+          {tab === "more" && <MorePanel state={s} onSwitch={onSwitch} onErase={onErase} />}
           <TabBar tab={tab} setTab={setTab} />
         </div>
       </div>
+      {offer && <CardsOverlay offer={offer} onDone={onCeremonyDone} />}
       {offline && <OfflineModal report={offline} onClose={() => setOffline(null)} />}
     </>
   );

@@ -1,103 +1,121 @@
-// End-to-end jsdom smoke of the flattened artifact: press sky, buy a Mote, verify save.
-import { JSDOM } from "jsdom";
+// jsdom e2e for the flattened artifact: load a rich save, buy, tab-walk, full reset ceremony, persistence.
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { JSDOM } from "jsdom";
 
-execSync("npx esbuild dist-artifact/generic-idle-game-1.jsx --bundle --external:react --external:react/jsx-runtime --external:react-dom/client --format=esm --platform=node --jsx=automatic --outfile=.domtmp/app.mjs", { stdio: "inherit" });
+execSync("npx esbuild dist-artifact/generic-idle-game-1.jsx --bundle --format=esm --platform=node --external:react --external:react/jsx-runtime --external:react-dom --loader:.jsx=jsx --outfile=.domtmp/app.mjs --log-level=error", { stdio: "inherit" });
 
-const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", {
-  url: "https://example.test/",
-  pretendToBeVisual: true,
-});
+const dom = new JSDOM(`<!doctype html><html><body><div id="root"></div></body></html>`, { pretendToBeVisual: true, url: "https://localhost/" });
 const { window } = dom;
-
-// Node 22: navigator is a getter-only global; must defineProperty.
+for (const k of ["document", "HTMLElement", "SVGElement", "Node", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame", "CustomEvent"]) {
+  globalThis[k] = window[k];
+}
 Object.defineProperty(globalThis, "navigator", { value: window.navigator, configurable: true });
 globalThis.window = window;
-globalThis.document = window.document;
-globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
-globalThis.cancelAnimationFrame = (id) => clearTimeout(id);
-globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
-window.matchMedia = globalThis.matchMedia;
-globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
-window.ResizeObserver = globalThis.ResizeObserver;
-window.HTMLCanvasElement.prototype.getContext = () => null; // Sky degrades gracefully without 2d ctx
 
-const stored = new Map();
-const storage = {
-  async get(k) { return stored.has(k) ? { key: k, value: stored.get(k) } : null; },
-  async set(k, v) { stored.set(k, v); return { key: k, value: v }; },
-  async delete(k) { stored.delete(k); return { key: k, deleted: true }; },
+const store = new Map();
+const seed = {
+  scenario: "s1",
+  score: 1e6,
+  runScore: 5e7,
+  tiers: [
+    { count: 40, bought: 30, phase: 0.5, cycles: 12 },
+    { count: 0, bought: 0, phase: 0.25, cycles: 0 },
+    ...Array.from({ length: 6 }, () => ({ count: 0, bought: 0, phase: 0, cycles: 0 })),
+  ],
+  progress: {
+    s1: {
+      tableau: { 0: { val: 2, spd: 0, cst: 0 } }, hotstart: 0, flywheel: false,
+      resets: 3, picks: 0, bestRun: 6e7, totalScore: 9e7, beaten: false,
+      everBought: [30, 0, 0, 0, 0, 0, 0, 0],
+    },
+  },
+  pool: { 0: { val: 40, spd: 6, cst: 30 } },
+  bankedDraws: 0,
+  startedAt: Date.now() - 3600_000,
+  lastSeen: Date.now() - 5_000,
+  runStartedAt: Date.now() - 600_000,
 };
-window.storage = storage;
-globalThis.storage = storage;
+store.set("gig1:save3", JSON.stringify(seed));
+globalThis.storage = window.storage = {
+  async get(key) { const v = store.get(key); return v === undefined ? null : { key, value: v }; },
+  async set(key, value) { store.set(key, value); return { key, value }; },
+  async delete(key) { store.delete(key); return { key, deleted: true }; },
+  async list() { return { keys: [...store.keys()] }; },
+};
 
 const React = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { default: App } = await import("../.domtmp/app.mjs");
 
-const { act } = React;
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-
-const root = createRoot(window.document.getElementById("root"));
-await act(async () => { root.render(React.createElement(App)); });
-await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const $ = (sel) => window.document.querySelector(sel);
 const $$ = (sel) => [...window.document.querySelectorAll(sel)];
-const text = () => window.document.body.textContent ?? "";
+const byText = (sel, txt) => $$(sel).find((el) => el.textContent.includes(txt));
+let failures = 0;
+const check = (name, cond, extra = "") => {
+  if (cond) console.log(`  ok  ${name}`);
+  else { failures++; console.error(`FAIL  ${name} ${extra}`); }
+};
 
-// 1. Shell renders: sky press target + tabs.
-const sky = $('[aria-label="Condense stardust"]');
-if (!sky) throw new Error("sky press surface missing");
-for (const label of ["Build", "Improve", "Crunch", "More"]) {
-  if (!$$("nav.tabbar button").some((b) => b.textContent.includes(label))) throw new Error(`tab ${label} missing`);
-}
-if (!$(".dustnum")) throw new Error("dust readout missing");
+const root = createRoot($("#root"));
+await (async () => { root.render(React.createElement(App)); })();
+await sleep(500);
 
-// 2. Tap the sky 20 times -> ~20 dust, floaty appears, First Light achievement.
-for (let i = 0; i < 20; i++) {
-  await act(async () => {
-    sky.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, clientX: 10, clientY: 10 }));
-  });
-}
-await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
-const dustNow = Number($(".dustnum").textContent.replace(/,/g, ""));
-if (!(dustNow >= 20)) throw new Error(`expected >=20 dust, saw ${$(".dustnum").textContent}`);
-if (!text().includes("First Light")) throw new Error("First Light toast/achievement missing");
+check("rail renders seeded nodes", $$(".node").length >= 2, `${$$(".node").length}`);
+check("score shows the seed", $(".scorenum")?.textContent === "1.00M", $(".scorenum")?.textContent);
+check("run subtotal visible", byText(".scoresub span", "run") !== undefined);
 
-// 3. Buy slab enabled at 20 dust (Mote costs 15) -> buy -> held 1, dust drops.
-const slab = $(".buyslab");
-if (!slab) throw new Error("buy slab missing");
-if (slab.disabled) throw new Error("buy slab should be affordable at 20 dust");
-await act(async () => { slab.click(); });
-if (!text().includes("1 held")) throw new Error("owned count did not update after buy");
-const dustAfter = Number($(".dustnum").textContent.replace(/,/g, ""));
-if (!(dustAfter < dustNow)) throw new Error("dust did not decrease after purchase");
+const boughtBefore = $(".kv b")?.textContent ?? "";
+const buySlab = byText(".slab", "BUY");
+check("buy slab present & enabled", buySlab !== undefined && !buySlab.disabled);
+buySlab.click();
+await sleep(250);
+check("buy raises bought by hand", ($(".kv b")?.textContent ?? "") !== boughtBefore, $(".kv b")?.textContent);
+check("buy spends score", $(".scorenum")?.textContent !== "1.00M", $(".scorenum")?.textContent);
 
-// 4. Tick advances dust passively (0.6/s from one Mote).
-await act(async () => { await new Promise((r) => setTimeout(r, 2600)); });
-const dustLater = Number($(".dustnum").textContent.replace(/,/g, ""));
-if (!(dustLater > dustAfter)) throw new Error("passive production not ticking");
+byText(".tabbar button", "RESET").click();
+await sleep(200);
+check("reset tab: thresholds met highlight", $$(".threshrow.met").length >= 2, `${$$(".threshrow.met").length}`);
+check("reset tab: histogram bars from pool", $$(".hrow").length >= 3, `${$$(".hrow").length}`);
+const resetSlab = byText(".slab", "RESET");
+check("reset slab enabled at 2 picks", resetSlab !== undefined && !resetSlab.disabled && resetSlab.textContent.includes("2 picks"), resetSlab?.textContent);
 
-// 5. Tabs switch panels.
-const improveBtn = $$("nav.tabbar button").find((b) => b.textContent.includes("Improve"));
-await act(async () => { improveBtn.click(); });
-if (!text().includes("Firmer Press")) throw new Error("Improve panel content missing");
-const crunchBtn = $$("nav.tabbar button").find((b) => b.textContent.includes("Crunch"));
-await act(async () => { crunchBtn.click(); });
-if (!text().includes("Big Crunch")) throw new Error("Crunch panel missing");
-const moreBtn = $$("nav.tabbar button").find((b) => b.textContent.includes("More"));
-await act(async () => { moreBtn.click(); });
-if (!text().includes("Sky taps")) throw new Error("More panel missing");
+resetSlab.click();
+await sleep(300);
+check("ceremony veil appears", $(".veil") !== null);
+check("cash-out shown", byText(".liq", "cashed out") !== undefined);
+const cards = $$(".playcard");
+check("three cards fanned", cards.length === 3, `${cards.length}`);
+cards[0].click();
+cards[1].click();
+await sleep(100);
+const keep = byText(".donebtn", "KEEP");
+check("KEEP arms after taking picks", keep !== undefined && !keep.disabled);
+keep.click();
+await sleep(400);
+check("ceremony closes", $(".veil") === null);
+check("run zeroed after reset", byText(".scoresub span", "run 0") !== undefined, byText(".scoresub span", "run")?.textContent);
 
-// 6. visibilitychange hidden -> save lands in window.storage under gig1:save2.
+byText(".tabbar button", "MORE").click();
+await sleep(200);
+check("more tab: picks counted", byText(".kv", "picks taken")?.textContent.includes("2"), byText(".kv", "picks taken")?.textContent);
+check("more tab: scenario 2 locked", byText(".scenrow", "locked") !== undefined);
+
+store.delete("gig1:save3");
+window.document.dispatchEvent(new window.Event("visibilitychange"));
 Object.defineProperty(window.document, "visibilityState", { value: "hidden", configurable: true });
-await act(async () => { window.document.dispatchEvent(new window.Event("visibilitychange")); });
-await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
-if (!stored.has("gig1:save2")) throw new Error("save not persisted on hide");
-const save = JSON.parse(stored.get("gig1:save2"));
-if (!(save.presses >= 20 && save.tiers[0].bought === 1)) throw new Error("save contents wrong");
+window.document.dispatchEvent(new window.Event("visibilitychange"));
+await sleep(300);
+const saved = store.get("gig1:save3");
+check("hidden tab persists a save", saved !== undefined);
+if (saved) {
+  const parsed = JSON.parse(saved);
+  // Wheels keep turning during the test's real seconds; warm ≠ frozen. Zeroed would mean reset killed it.
+  check("phase survived the reset (still warm)", parsed.tiers[0].phase > 0.4, `${parsed.tiers[0].phase}`);
+  check("picks recorded in progress", parsed.progress.s1.picks === 2, `${parsed.progress.s1.picks}`);
+  check("pool cleared by reset", Object.keys(parsed.pool).length <= 1, JSON.stringify(parsed.pool));
+}
 
-await act(async () => { root.unmount(); });
-console.log("dom-smoke: sky press, purchase, ticking, tabs, persistence — all pass");
+execSync("rm -rf .domtmp");
+if (failures > 0) { console.error(`\n${failures} FAILURES`); process.exit(1); }
+console.log("\ndom smoke: all green");
