@@ -7,7 +7,13 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "flatten": "node scripts/flatten.mjs"
+    "flatten": "node scripts/flatten.mjs",
+    "test": "npm run typecheck && npm run test:smoke && npm run test:dom",
+    "test:smoke": "esbuild scripts/smoke.test.ts --bundle --platform=node --format=esm --outfile=.testtmp/smoke.mjs --log-level=error && node .testtmp/smoke.mjs && rm -rf .testtmp",
+    "test:dom": "node scripts/dom-smoke.mjs",
+    "test:ssr": "npm run flatten && node scripts/ssr-smoke.mjs",
+    "sim": "node scripts/pacing-sim.mjs",
+    "ship": "npm run build && npm run flatten && npm run test:ssr && npm run test:dom"
   },
   "dependencies": {
     "react": "^18.3.1",
