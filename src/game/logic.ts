@@ -1,6 +1,6 @@
 import {
-  BASE_DRAW, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY, NUM_CLAMP,
-  RARITY_LEVELS, RARITY_WEIGHT, scenarioById,
+  BASE_DRAW, CST_PER_DOUBLING, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY,
+  NUM_CLAMP, POOL_DAMP, RARITY_LEVELS, RARITY_WEIGHT, SPD_PER_SEC, VAL_PER_MILESTONE, scenarioById,
 } from "./constants";
 import type { BuyAmount, Card, DrawOffer, GameState, ScenarioDef, ScenarioProgress, Stat, TierState } from "./types";
 
@@ -160,6 +160,7 @@ export function buyTier(s: GameState, i: number, n: number): boolean {
   const cost = tierCost(s, i, n);
   if (n <= 0 || !Number.isFinite(cost) || s.score < cost) return false;
   const lvlBefore = milestoneLevel(s, i);
+  const boughtBefore = st.bought;
   s.score -= cost;
   st.count += n;
   st.bought += n;
@@ -167,8 +168,11 @@ export function buyTier(s: GameState, i: number, n: number): boolean {
   const p = prog(s);
   const ever = p.everBought[i] ?? 0;
   if (st.bought > ever) p.everBought[i] = st.bought;
-  // Sculpting: engaging the price curve writes cost-card weight.
-  addPool(s, i, "cst", n);
+  // Sculpting: engaging the price curve writes cost-card weight — per DOUBLING
+  // of the stake, not per unit. Per-unit was linear, so a tier you had made
+  // cheap got bought more, which made it cheaper, which buried every other
+  // card in the pool. Doubling matches how milestones already scale.
+  addPool(s, i, "cst", CST_PER_DOUBLING * Math.log2((st.bought + 1) / (boughtBefore + 1)));
   return true;
 }
 
@@ -194,15 +198,18 @@ export function step(s: GameState, dtSec: number): void {
     // frozen through resets and idle stretches, resumed the moment you own one.
     if (held < 1) continue;
     const T = period(s, i);
+    // Sculpting: watching a wheel turn writes speed weight — but only while it
+    // is still a wheel. Once it graduates to glow, the spigot closes itself.
+    // Per SECOND WATCHED, not per completion: completions scale as 1/period, so
+    // the old rule flooded 2s tiers and starved 640s tiers to nothing, leaving
+    // speed unofferable on exactly the tiers that most needed it.
+    if (T >= GLOW_PERIOD_S) addPool(s, i, "spd", dtSec * SPD_PER_SEC);
     const adv = dtSec / T;
     const total = st.phase + adv;
     const completions = Math.floor(total);
     st.phase = total - completions;
     if (completions <= 0) continue;
     st.cycles += completions;
-    // Sculpting: watching a wheel turn writes speed weight — but only while it is
-    // still a wheel. Once it graduates to glow, the spigot closes itself.
-    if (T >= GLOW_PERIOD_S) addPool(s, i, "spd", completions * 0.5);
     const pay = held * unitValue(s, i) * completions;
     deposit(s, def.target, pay);
   }
@@ -235,7 +242,7 @@ export function clampState(s: GameState): void {
 /** Milestone crossings write value-card weight. */
 function noteMilestones(s: GameState, i: number, before: number): void {
   const after = milestoneLevel(s, i);
-  if (after > before) addPool(s, i, "val", (after - before) * 20);
+  if (after > before) addPool(s, i, "val", (after - before) * VAL_PER_MILESTONE);
 }
 
 /** The ladder rises as the tableau grows, so run length stays a live choice. */
@@ -291,12 +298,27 @@ export function visibleTiers(s: GameState): number {
 
 // ---------- Draws ----------
 
+/**
+ * How much a tier's earned weight is worth once you already hold levels there.
+ * Diminishing by design: you want fewer cards for a tier the deeper you are in
+ * it, and without this the cost loop feeds itself (cheaper → bought more →
+ * more weight → offered more → cheaper).
+ */
+export function tierDamp(s: GameState, tier: number): number {
+  const row = prog(s).tableau[tier];
+  const levels = row ? row.val + row.spd + row.cst : 0;
+  return 1 / (1 + POOL_DAMP * levels);
+}
+
+/** Draw weights as they will ACTUALLY be rolled — damping included, so the
+ *  RESET histogram shows the real odds rather than the raw tally. */
 export function poolEntries(s: GameState): Array<{ tier: number; stat: Stat; w: number }> {
   const out: Array<{ tier: number; stat: Stat; w: number }> = [];
   for (const [tierStr, row] of Object.entries(s.pool)) {
     const tier = Number(tierStr);
+    const damp = tierDamp(s, tier);
     for (const stat of ["val", "spd", "cst"] as const) {
-      if (row[stat] > 0) out.push({ tier, stat, w: row[stat] });
+      if (row[stat] > 0) out.push({ tier, stat, w: row[stat] * damp });
     }
   }
   return out;

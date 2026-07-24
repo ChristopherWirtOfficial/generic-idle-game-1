@@ -23,6 +23,30 @@ export const HOTSTART_BONUS = 5;
 /** Renderer-only threshold: below this period a wheel draws as glow. Never in the economy. */
 export const GLOW_PERIOD_S = 0.3;
 
+/**
+ * Pool weight units. All three sources are priced in the same currency so no
+ * one stat can out-shout the others by accident of measurement:
+ * - val: 20 per milestone crossed (milestone spans double, so this is log-scaled)
+ * - cst: 20 per DOUBLING of hand-bought stake (was +1/unit — linear, which let
+ *   cheap tiers bury everything else once cost levels made them cheaper still)
+ * - spd: per second spent watching a wheel that hasn't graduated to glow, NOT
+ *   per completion — completions scale as 1/period, which handed fast tiers a
+ *   flood and starved 640s tiers to nothing.
+ */
+export const VAL_PER_MILESTONE = 20;
+export const CST_PER_DOUBLING = 20;
+export const SPD_PER_SEC = 0.25;
+
+/**
+ * Draw weight for a tier is divided by (1 + POOL_DAMP × levels already held on
+ * that tier). The raw loop is positive feedback — cost levels make a tier
+ * cheaper, so you buy more of it, so it writes more weight, so it is offered
+ * more — and this turns it negative: the deeper your stake in a tier, the more
+ * the pool leans elsewhere. Damping is per TIER, not per (tier,stat), so it
+ * never refuses to sell you the specific line you are building.
+ */
+export const POOL_DAMP = 0.02;
+
 export const NUM_CLAMP = 1e300;
 
 function chain(specs: Array<Partial<TierDef> & { basePeriod: number; baseCost: number; costGrowth: number }>): TierDef[] {

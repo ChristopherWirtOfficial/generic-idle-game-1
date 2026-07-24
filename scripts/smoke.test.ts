@@ -95,16 +95,46 @@ console.log("— pool sculpting —");
   s.score = 1e9;
   buyTier(s, 0, 30); // crosses 25 milestone
   const pool0 = s.pool[0]!;
-  close(pool0.cst, 30, 1e-9, "buys write cst weight 1:1");
+  // cst is per DOUBLING of the stake, not per unit: 0 -> 30 bought is
+  // log2(31) doublings. Linear-per-unit let a tier you had made cheap bury
+  // every other card in the pool.
+  close(pool0.cst, 20 * Math.log2(31), 1e-9, "buys write cst weight per doubling");
   close(pool0.val, 20, 1e-9, "milestone crossing writes val weight");
+  // Doubling means diminishing: the next 30 units are worth far less weight.
+  const cstAfterFirst = pool0.cst;
+  buyTier(s, 0, 30);
+  ok(pool0.cst - cstAfterFirst < cstAfterFirst / 2, "further buys write steeply less cst weight");
+
   s.tiers[0]!.phase = 0;
-  step(s, 4); // 2 completions at the 2s base period
-  close(pool0.spd, 1, 1e-9, "discrete completions write spd weight 0.5 each");
+  step(s, 4);
+  // spd is per second watched, so a slow wheel accrues at the same rate as a
+  // fast one — completions scale as 1/period and starved the deep tiers.
+  close(pool0.spd, 1, 1e-9, "spd weight accrues per second watched");
+  {
+    const slow = freshState(0);
+    slow.score = 1e9;
+    buyTier(slow, 0, 1);
+    slow.tiers[1]!.count = 1; // a 10s wheel, five times slower than tier 1
+    step(slow, 4);
+    close(slow.pool[1]!.spd, 1, 1e-9, "a slow wheel writes the same spd weight as a fast one");
+  }
 
   setLevels(s, 0, "spd", 24); // glow regime
   const spdBefore = pool0.spd;
   step(s, 10);
   close(pool0.spd, spdBefore, 1e-9, "glow closes the spd spigot");
+}
+
+console.log("— pool damping —");
+{
+  const s = freshState(0);
+  s.score = 1e12;
+  buyTier(s, 0, 30);
+  const raw = poolEntries(s).reduce((a, e) => a + e.w, 0);
+  setLevels(s, 0, "cst", 50);
+  const damped = poolEntries(s).reduce((a, e) => a + e.w, 0);
+  ok(damped < raw, "levels on a tier damp its own draw weight");
+  close(damped, raw / (1 + 0.02 * 50), 1e-9, "damping is 1/(1 + POOL_DAMP × levels)");
 }
 
 console.log("— rising ladder —");
@@ -249,7 +279,7 @@ console.log("— save round-trip —");
   ok(r.tiers[0]!.bought === 30, "bought survives");
   close(r.tiers[0]!.phase, 0.61, 1e-9, "phase survives");
   ok(tableauLevels(r, 0, "spd") === 4, "tableau survives");
-  close(r.pool[0]!.cst, 30, 1e-9, "pool survives");
+  close(r.pool[0]!.cst, 20 * Math.log2(31), 1e-9, "pool survives");
   const { state: fresh } = await (async () => { mem.set(SAVE_KEY, "{corrupt"); return loadGame(Date.now()); })();
   ok(fresh.score === 0 && fresh.tiers[0]!.count === 1, "corrupt save falls back fresh");
 }
