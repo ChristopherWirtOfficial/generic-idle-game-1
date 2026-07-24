@@ -6,6 +6,7 @@ import {
 } from "../game/logic";
 import { fmt, fmtRate, fmtVal } from "../game/format";
 import { STAT_NAME, StatGlyph, amountShort } from "./vocab";
+
 import type { BuyAmount, GameState } from "../game/types";
 
 export function hue(i: number): string {
@@ -130,6 +131,7 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
     const isOpen = open === i;
     const targetName = def.target < 0 ? "score" : String(def.target + 1);
     const dead = def.baseValue <= 0;
+    const levelsHeld = tableauLevels(state, i, "speed") + tableauLevels(state, i, "value") + tableauLevels(state, i, "cost");
 
     // The resting plate prices the globally-selected quantity for THIS tier.
     const unlocking = needsUnlock(state, i);
@@ -158,19 +160,36 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
           />
           <span className="txt">
             <span className="count">{known ? fmt(held) : "—"}</span>
-            <span className="flow">
-              {dead ? (
-                "dead link"
-              ) : known ? (
-                <>
-                  <span className="pay">{fmtVal(unitValue(state, i))}</span>
-                  {" → "}
-                  <span className="tgt">{targetName}</span>
-                  <span className="sep">·</span>
-                  {isLive ? <span className="rate">{fmtRate(throughput(state, i))}/s</span> : "stopped"}
-                </>
-              ) : (
-                <>→ <span className="tgt">{targetName}</span></>
+            <span className="sub">
+              <span className="flow">
+                {dead ? (
+                  "dead link"
+                ) : known ? (
+                  <>
+                    <span className="pay">{fmtVal(unitValue(state, i))}</span>
+                    {" → "}
+                    <span className="tgt">{targetName}</span>
+                    <span className="sep">·</span>
+                    {isLive ? <span className="rate">{fmtRate(throughput(state, i))}/s</span> : "stopped"}
+                  </>
+                ) : (
+                  <>→ <span className="tgt">{targetName}</span></>
+                )}
+              </span>
+              {/* Tableau levels at rest. The one thing you otherwise have to open
+                  every row to see — and the flow line hides when the chain is
+                  long, so these deliberately outlive it. */}
+              {(known || levelsHeld > 0) && (
+                <span className="levels">
+                  {(["speed", "value", "cost"] as const).map((stat) => {
+                    const L = tableauLevels(state, i, stat);
+                    return (
+                      <span key={stat} className={`lv${L > 0 ? " on" : ""}`} title={`${STAT_NAME[stat]} level ${L}`}>
+                        <StatGlyph stat={stat} />{fmt(L)}
+                      </span>
+                    );
+                  })}
+                </span>
               )}
             </span>
           </span>

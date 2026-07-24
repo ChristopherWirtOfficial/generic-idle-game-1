@@ -50,8 +50,22 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .count { display: block; font-size: 21px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1; }
 .row.empty .count { color: var(--faint); }
 .row.slot .count { color: var(--faint); font-weight: 400; font-size: 15px; }
-.flow { display: block; font-size: 11.5px; color: var(--dim); line-height: 1.45; margin-top: 2px;
+.sub { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; min-width: 0; }
+/* Shrink-to-fit, not grow: the levels strip should sit just after the flow
+   text so it stays attached to the tier, rather than drifting to the far edge
+   and reading as part of the buy plate. */
+.flow { flex: 0 1 auto; min-width: 0; font-size: 11.5px; color: var(--dim); line-height: 1.45;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Levels at rest: quiet enough to ignore, present enough to scan down. Zeros
+   stay in place rather than collapsing, so the columns line up row to row. */
+.levels { flex: none; display: flex; gap: 8px; font-size: 9.5px; line-height: 1;
+  color: var(--faint); font-variant-numeric: tabular-nums; }
+.lv { display: inline-flex; align-items: center; gap: 2px; opacity: 0.4; }
+.lv.on { opacity: 1; color: var(--dim); }
+.lv.on .sglyph { color: var(--tc); }
+.lv .sglyph { width: 7px; height: 7px; margin-right: 0; }
+.row.open .levels { display: none; }
 .flow .pay, .flow .rate { color: var(--text); }
 .flow .tgt { color: var(--tc); }
 .flow .sep { color: var(--faint); padding: 0 3px; }
