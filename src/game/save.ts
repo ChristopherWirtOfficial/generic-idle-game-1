@@ -1,6 +1,9 @@
 import { BANK_CAP, BANK_MS, OFFLINE_MIN_MS, SAVE_KEY, TRICKLE_S, scenarioById } from "./constants";
 import { clampState, prog, scoreRate } from "./logic";
 import { freshState } from "./state";
+import { SAVE_VERSION, migrateSave } from "./migrations";
+import { D, ZERO, isNanD } from "./num";
+import type { Decimal } from "./num";
 import type { GameState, OfflineReport, ScenarioProgress, Stat, TierState } from "./types";
 
 interface StorageLike {
@@ -52,21 +55,27 @@ function backend(): StorageLike {
 const posNum = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
 
-/**
- * Stats were once written as val/spd/cst. Saves are never mutated in place, so
- * a save written before the rename still carries the old keys — read both, new
- * name first. Dropping this silently zeroes every tableau ever earned.
- */
-const LEGACY_STAT: Record<Stat, string> = { value: "val", speed: "spd", cost: "cst" };
+/** Decimals serialise as strings; migrations normalise numbers into them. */
+const posDec = (v: unknown): Decimal | null => {
+  if (typeof v === "number") return Number.isFinite(v) && v >= 0 ? D(v) : null;
+  if (typeof v === "string" && v.length > 0) {
+    const d = D(v);
+    return isNanD(d) || d.lt(0) ? null : d;
+  }
+  return null;
+};
 
-const statNum = (row: Record<string, unknown>, stat: Stat): number | null =>
-  posNum(row[stat]) ?? posNum(row[LEGACY_STAT[stat]]);
+/**
+ * Old shapes are NOT handled here. Anything reaching revive has already been
+ * walked to SAVE_VERSION by migrateSave, so this reads exactly one shape.
+ */
+const statNum = (row: Record<string, unknown>, stat: Stat): number | null => posNum(row[stat]);
 
 function reviveTier(raw: unknown): TierState {
-  const t: TierState = { count: 0, bought: 0, phase: 0, cycles: 0 };
+  const t: TierState = { count: ZERO, bought: 0, phase: 0, cycles: 0 };
   if (typeof raw !== "object" || raw === null) return t;
   const r = raw as Record<string, unknown>;
-  t.count = posNum(r.count) ?? 0;
+  t.count = posDec(r.count) ?? ZERO;
   t.bought = Math.floor(posNum(r.bought) ?? 0);
   const ph = posNum(r.phase) ?? 0;
   t.phase = ph < 1 ? ph : 0;
@@ -77,7 +86,7 @@ function reviveTier(raw: unknown): TierState {
 function reviveProgress(raw: unknown, tierCount: number): ScenarioProgress {
   const p: ScenarioProgress = {
     tableau: {}, hotstart: 0, flywheel: false, resets: 0, picks: 0,
-    bestRun: 0, totalScore: 0, beaten: false,
+    bestRun: ZERO, totalScore: ZERO, beaten: false,
     everBought: Array.from({ length: tierCount }, () => 0),
   };
   if (typeof raw !== "object" || raw === null) return p;
@@ -86,8 +95,8 @@ function reviveProgress(raw: unknown, tierCount: number): ScenarioProgress {
   p.flywheel = r.flywheel === true;
   p.resets = posNum(r.resets) ?? 0;
   p.picks = Math.floor(posNum(r.picks) ?? 0);
-  p.bestRun = posNum(r.bestRun) ?? 0;
-  p.totalScore = posNum(r.totalScore) ?? 0;
+  p.bestRun = posDec(r.bestRun) ?? ZERO;
+  p.totalScore = posDec(r.totalScore) ?? ZERO;
   p.beaten = r.beaten === true;
   if (Array.isArray(r.everBought)) {
     for (let i = 0; i < tierCount; i++) p.everBought[i] = Math.floor(posNum(r.everBought[i]) ?? 0);
@@ -115,8 +124,8 @@ function reviveState(raw: unknown): GameState {
   if (typeof r.scenario === "string") s.scenario = r.scenario;
   const def = scenarioById(s.scenario);
   s.scenario = def.id;
-  s.score = posNum(r.score) ?? s.score;
-  s.runScore = posNum(r.runScore) ?? 0;
+  s.score = posDec(r.score) ?? s.score;
+  s.runScore = posDec(r.runScore) ?? ZERO;
   s.bankedDraws = Math.min(BANK_CAP, Math.floor(posNum(r.bankedDraws) ?? 0));
   s.startedAt = posNum(r.startedAt) ?? s.startedAt;
   s.lastSeen = posNum(r.lastSeen) ?? 0;
@@ -145,7 +154,7 @@ function reviveState(raw: unknown): GameState {
 
 export async function persist(s: GameState): Promise<void> {
   s.lastSeen = Date.now();
-  try { await backend().set(SAVE_KEY, JSON.stringify(s)); } catch { /* best effort */ }
+  try { await backend().set(SAVE_KEY, JSON.stringify({ ...s, version: SAVE_VERSION })); } catch { /* best effort */ }
 }
 
 export async function eraseSave(): Promise<void> {
@@ -160,13 +169,13 @@ export async function eraseSave(): Promise<void> {
 export function applyOffline(s: GameState, awayMs: number): OfflineReport {
   const before = s.bankedDraws;
   s.bankedDraws = Math.min(BANK_CAP, s.bankedDraws + Math.floor(awayMs / BANK_MS));
-  const trickle = scoreRate(s) * TRICKLE_S;
-  s.score += trickle;
-  s.runScore += trickle;
-  if (trickle > 0) prog(s).totalScore += trickle;
+  const trickle = scoreRate(s).times(TRICKLE_S);
+  s.score = s.score.plus(trickle);
+  s.runScore = s.runScore.plus(trickle);
+  if (trickle.gt(0)) prog(s).totalScore = prog(s).totalScore.plus(trickle);
   for (let i = 0; i < s.tiers.length; i++) {
     const st = s.tiers[i];
-    if (!st || Math.floor(st.count) < 1) continue; // unowned wheels stay frozen
+    if (!st || st.count.floor().lt(1)) continue; // unowned wheels stay frozen
     const T = scenarioById(s.scenario).tiers[i]?.basePeriod ?? 1;
     st.phase = (st.phase + (awayMs / 1000) / T) % 1;
   }
@@ -178,13 +187,22 @@ export async function loadGame(now = Date.now()): Promise<{ state: GameState; of
   let state = freshState(now);
   try {
     const found = await backend().get(SAVE_KEY);
-    if (found?.value) state = reviveState(JSON.parse(found.value));
+    if (found?.value) {
+      // Migrate first, and land the migrated save back in storage BEFORE
+      // anything reads it. After this line the rest of the codebase — revive
+      // included — only ever sees a SAVE_VERSION-shaped save.
+      const { raw, changed } = migrateSave(JSON.parse(found.value));
+      if (changed) {
+        try { await backend().set(SAVE_KEY, JSON.stringify(raw)); } catch { /* best effort */ }
+      }
+      state = reviveState(raw);
+    }
   } catch { /* fresh */ }
   let offline: OfflineReport | null = null;
   const away = now - state.lastSeen;
   if (state.lastSeen > 0 && away >= OFFLINE_MIN_MS) {
     const report = applyOffline(state, away);
-    if (report.bankedGained > 0 || report.trickle >= 1) offline = report;
+    if (report.bankedGained > 0 || report.trickle.gte(1)) offline = report;
   }
   state.lastSeen = now;
   return { state, offline };

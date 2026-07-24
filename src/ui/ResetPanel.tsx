@@ -9,7 +9,7 @@ interface Props { state: GameState; onReset: () => void; }
 
 export function ResetPanel({ state, onReset }: Props): JSX.Element {
   const liq = liquidationValue(state);
-  const finalRun = state.runScore + liq;
+  const finalRun = state.runScore.plus(liq);
   const [t1, t2, t3] = pickThresholds(state);
   const picks = picksFor(state, finalRun);
   const entries = poolEntries(state).sort((a, b) => b.w - a.w);
@@ -25,9 +25,9 @@ export function ResetPanel({ state, onReset }: Props): JSX.Element {
           <div className="kv"><span>banked draws (from time away)</span><b>+{state.bankedDraws} / {BANK_CAP}</b></div>
         )}
         <div className="sectionlabel">picks · ladder rises as you take them</div>
-        <div className={`threshrow${finalRun >= t1 ? " met" : ""}`}><span>1 pick</span><b>{fmt(t1)}</b></div>
-        <div className={`threshrow${finalRun >= t2 ? " met" : ""}`}><span>2 picks</span><b>{fmt(t2)}</b></div>
-        <div className={`threshrow${finalRun >= t3 ? " met" : ""}`}><span>3 picks</span><b>{fmt(t3)}</b></div>
+        <div className={`threshrow${finalRun.gte(t1) ? " met" : ""}`}><span>1 pick</span><b>{fmt(t1)}</b></div>
+        <div className={`threshrow${finalRun.gte(t2) ? " met" : ""}`}><span>2 picks</span><b>{fmt(t2)}</b></div>
+        <div className={`threshrow${finalRun.gte(t3) ? " met" : ""}`}><span>3 picks</span><b>{fmt(t3)}</b></div>
         <div className="sectionlabel">the pool · what this run wrote</div>
         <div className="hist">
           {entries.length === 0 && <div className="kv"><span>nothing yet — buy, cross milestones, watch wheels</span></div>}

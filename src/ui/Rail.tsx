@@ -5,6 +5,7 @@ import {
   tableauLevels, tableauMult, throughput, tierCost, tierKnown, unitValue, visibleTiers,
 } from "../game/logic";
 import { fmt, fmtRate, fmtVal } from "../game/format";
+import { isFiniteD, toNum } from "../game/num";
 import { STAT_NAME, StatGlyph, amountShort } from "./vocab";
 
 import type { BuyAmount, GameState } from "../game/types";
@@ -99,7 +100,7 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
         if (!st) continue;
         const T = period(s, i);
         let p: number;
-        if (Math.floor(st.count) < 1) {
+        if (st.count.lt(1)) {
           p = st.phase; // frozen wheels hold still
         } else if (T < GLOW_PERIOD_S) {
           p = 1; // glow: the ring is simply full
@@ -123,9 +124,9 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
     const st = state.tiers[i];
     if (!def || !st) continue;
 
-    const held = Math.floor(st.count);
+    const held = st.count.floor();
     const T = period(state, i);
-    const isLive = held >= 1;
+    const isLive = st.count.gte(1);
     const glowing = T < GLOW_PERIOD_S && isLive;
     const known = tierKnown(state, i);
     const isOpen = open === i;
@@ -137,8 +138,9 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
     const unlocking = needsUnlock(state, i);
     const n = amountCount(state, i, amount);
     const cost = tierCost(state, i, n);
-    const can = state.score >= cost;
-    const fill = Number.isFinite(cost) && cost > 0 ? Math.min(1, state.score / cost) : 0;
+    const can = state.score.gte(cost);
+    // How close the score is to affording it — quantitative, not decorative.
+    const fill = isFiniteD(cost) && cost.gt(0) ? Math.min(1, toNum(state.score.div(cost))) : 0;
 
     rows.push(
       <div
@@ -213,8 +215,8 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
                 {AMOUNTS.map((a) => {
                   const qn = amountCount(state, i, a);
                   const qc = tierCost(state, i, qn);
-                  const qcan = state.score >= qc;
-                  const qfill = Number.isFinite(qc) && qc > 0 ? Math.min(1, state.score / qc) : 0;
+                  const qcan = state.score.gte(qc);
+                  const qfill = isFiniteD(qc) && qc.gt(0) ? Math.min(1, toNum(state.score.div(qc))) : 0;
                   return (
                     <button
                       key={String(a)}

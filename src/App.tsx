@@ -95,7 +95,7 @@ export default function App(): JSX.Element {
         hiddenAt.current = 0;
         if (away >= OFFLINE_MIN_MS) {
           const report = applyOffline(s, away);
-          if (report.bankedGained > 0 || report.trickle >= 1) setOffline(report);
+          if (report.bankedGained > 0 || report.trickle.gte(1)) setOffline(report);
           void persist(s);
           bump();
         }

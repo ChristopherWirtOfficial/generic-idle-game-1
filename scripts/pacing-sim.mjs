@@ -32,13 +32,22 @@ function autoPick(offer) {
   return pick;
 }
 
+/** Decimal has no toExponential; build it from mantissa/exponent. */
+function fmtE(d) {
+  const m = d.mantissa, e = d.exponent;
+  if (!Number.isFinite(m) || !Number.isFinite(e)) return String(d);
+  return `${m.toFixed(2)}e+${e}`;
+}
+
 function buyPass() {
   const vis = C.visibleTiers(s);
   for (let i = vis - 1; i >= 0; i--) {
     let guard = 0;
     while (guard++ < 500 && C.buyTier(s, i, 1)) {
-      const next = i + 1 < vis ? C.tierCost(s, i + 1, 1) : Infinity;
-      if (Number.isFinite(next) && s.score > next * 0.4) break; // save toward deeper
+      const next = i + 1 < vis ? C.tierCost(s, i + 1, 1) : null;
+      // Decimal: Number.isFinite() on one is always false, which silently
+      // disabled this guard and made the greedy player dump into tier 1.
+      if (next && C.isFiniteD(next) && s.score.gt(next.times(0.4))) break; // save toward deeper
     }
   }
 }
@@ -59,14 +68,14 @@ for (let t = 0; t < HOURS * 3600; t++) {
     }
   }
   const liq = C.liquidationValue(s);
-  const finalRun = s.runScore + liq;
+  const finalRun = s.runScore.plus(liq);
   const picks = C.picksFor(s, finalRun);
   // Alternate like a veteran: mostly chain shallow, but every 25th reset is a
   // deliberate push (hold out for 2 picks, or 3 once the tableau is thick).
   const pushing = resets > 0 && resets % 25 === 24;
   const want = pushing ? Math.min(3, 1 + Math.floor(C.prog(s).picks / 60)) : RESET_AT_PICKS;
   if (picks >= want || (picks >= 1 && t - lastResetT > 40 * 60)) {
-    if (firstPickT === null) { firstPickT = t; log.push([t, `first reset ready: run ${s.runScore.toExponential(2)} + liq ${liq.toExponential(2)}, picks ${picks}`]); }
+    if (firstPickT === null) { firstPickT = t; log.push([t, `first reset ready: run ${fmtE(s.runScore)} + liq ${fmtE(liq)}, picks ${picks}`]); }
     const offer = C.rollDraw(s, rand);
     for (let k = 0; k < offer.picks; k++) {
       const card = autoPick(offer);
@@ -83,7 +92,7 @@ for (let t = 0; t < HOURS * 3600; t++) {
   if (t % 1800 === 0 && t > 0) {
     const p = C.prog(s);
     const t0m = p.tableau[0] ?? { value: 0, speed: 0, cost: 0 };
-    log.push([t, `--- resets ${resets}, picks ${picksTaken}, t0 L[s${t0m.speed} v${t0m.value} c${t0m.cost}], best ${C.prog(s).bestRun.toExponential(1)}, period0 ${C.period(s, 0).toFixed(2)}s, thresh1 ${C.pickThresholds(s)[0].toExponential(1)}, deepest ${Math.max(0, ...[...seenTier]) + 1}`]);
+    log.push([t, `--- resets ${resets}, picks ${picksTaken}, t0 L[s${t0m.speed} v${t0m.value} c${t0m.cost}], best ${fmtE(C.prog(s).bestRun)}, period0 ${C.period(s, 0).toFixed(2)}s, thresh1 ${C.pickThresholds(s)[0].toExponential(1)}, deepest ${Math.max(0, ...[...seenTier]) + 1}`]);
   }
 }
 const late = resetDurations.slice(-8);
