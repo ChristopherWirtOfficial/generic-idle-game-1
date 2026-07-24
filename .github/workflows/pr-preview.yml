@@ -1,0 +1,41 @@
+name: Deploy PR preview
+
+# Build every PR and publish it to gh-pages under pr-preview/pr-<N>/.
+# Note: no `closed` event — previews are intentionally NEVER torn down,
+# so the gh-pages branch accumulates a little museum of past builds.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+# Serialize gh-pages writes (shared group with the production deploy).
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: write       # push the preview to gh-pages
+  pull-requests: write  # post/update the preview-link comment
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    # Forks get a read-only token and can't push gh-pages, so skip them
+    # (the build would just fail). Same-repo branches only.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: ./dist
+          # Default deploys to gh-pages:pr-preview/pr-<number>/ and
+          # comments the URL on the PR.

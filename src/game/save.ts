@@ -16,10 +16,37 @@ const memoryStorage: StorageLike = {
   async delete(k) { memory.delete(k); return null; },
 };
 
+/** localStorage, wrapped to the async shape — the backend on any plain web host. */
+function localStorageBacked(): StorageLike | null {
+  try {
+    const ls = (globalThis as { localStorage?: Storage }).localStorage;
+    if (!ls) return null;
+    // Private-browsing modes expose localStorage but throw on write; probe first.
+    ls.setItem(`${SAVE_KEY}:probe`, "1");
+    ls.removeItem(`${SAVE_KEY}:probe`);
+    return {
+      async get(k) { const v = ls.getItem(k); return v === null ? null : { value: v }; },
+      async set(k, v) { ls.setItem(k, v); return null; },
+      async delete(k) { ls.removeItem(k); return null; },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Backends, best first: the artifact host's async `storage`, then localStorage
+ * (GitHub Pages, or any plain web host), then memory. Memory does NOT survive a
+ * refresh — it is the last resort, never the default when a real save exists.
+ */
+let resolved: StorageLike | null = null;
 function backend(): StorageLike {
+  if (resolved) return resolved;
   const w = globalThis as { storage?: StorageLike };
-  if (typeof w.storage?.get === "function") return w.storage;
-  return memoryStorage;
+  resolved = typeof w.storage?.get === "function"
+    ? w.storage
+    : localStorageBacked() ?? memoryStorage;
+  return resolved;
 }
 
 const posNum = (v: unknown): number | null =>

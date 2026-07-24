@@ -1,0 +1,43 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pushing the built site to the gh-pages branch requires write access to
+# repo contents. (No pages/id-token perms needed — we don't use the official
+# deploy-pages action; the branch IS the source.)
+permissions:
+  contents: write
+
+# Serialize gh-pages writes against the PR-preview workflow so a production
+# deploy and a preview deploy never push the branch at once.
+concurrency:
+  group: gh-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Publish to gh-pages (site root)
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages
+          # Refresh the root build but DON'T delete the per-PR preview
+          # folders — they're kept as a running deploy history.
+          clean: true
+          clean-exclude: |
+            pr-preview/

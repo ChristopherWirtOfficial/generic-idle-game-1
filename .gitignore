@@ -1,3 +1,7 @@
 node_modules
 dist
 dist-artifact
+.testtmp
+.serena
+*.log
+.DS_Store
