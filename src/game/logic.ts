@@ -71,13 +71,15 @@ export function scoreRate(s: GameState): number {
   return def && def.target === -1 ? throughput(s, 0) : 0;
 }
 
+/** Prices are integers: what the slab shows is exactly what it charges. */
 export function tierCost(s: GameState, i: number, n = 1): number {
   const def = scen(s).tiers[i];
   const st = s.tiers[i];
   if (!def || !st || n <= 0) return Infinity;
   const g = def.costGrowth;
   const first = (def.baseCost / tableauMult(s, i, "cst")) * Math.pow(g, st.bought);
-  return (first * (Math.pow(g, n) - 1)) / (g - 1);
+  const total = (first * (Math.pow(g, n) - 1)) / (g - 1);
+  return Number.isFinite(total) ? Math.ceil(total) : Infinity;
 }
 
 export function maxAffordable(s: GameState, i: number): number {
@@ -86,8 +88,11 @@ export function maxAffordable(s: GameState, i: number): number {
   if (!def || !st) return 0;
   const g = def.costGrowth;
   const first = (def.baseCost / tableauMult(s, i, "cst")) * Math.pow(g, st.bought);
-  if (s.score < first) return 0;
-  return Math.floor(Math.log((s.score * (g - 1)) / first + 1) / Math.log(g));
+  if (s.score < Math.ceil(first)) return 0;
+  let n = Math.max(1, Math.floor(Math.log((s.score * (g - 1)) / first + 1) / Math.log(g)));
+  while (n > 0 && tierCost(s, i, n) > s.score) n--;
+  while (tierCost(s, i, n + 1) <= s.score) n++;
+  return n;
 }
 
 export function buyTier(s: GameState, i: number, n: number): boolean {
@@ -307,8 +312,8 @@ export function doReset(s: GameState, now = Date.now()): void {
 /** Every run starts able to afford exactly one tier 1. */
 export function startingScore(s: GameState): number {
   const def = scen(s).tiers[0];
-  if (!def) return 10;
-  return def.baseCost / tableauMult(s, 0, "cst");
+  if (!def) return 3;
+  return Math.ceil(def.baseCost / tableauMult(s, 0, "cst"));
 }
 
 export function switchScenario(s: GameState, id: string, now = Date.now()): void {

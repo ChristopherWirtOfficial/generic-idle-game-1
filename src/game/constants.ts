@@ -37,8 +37,8 @@ function chain(specs: Array<Partial<TierDef> & { basePeriod: number; baseCost: n
 }
 
 const BASELINE_TIERS = chain([
-  { basePeriod: 5,   baseCost: 10,    costGrowth: 1.1 },
-  { basePeriod: 10,  baseCost: 1.5e2, costGrowth: 1.13 },
+  { basePeriod: 5,   baseCost: 3,     costGrowth: 1.1 },
+  { basePeriod: 10,  baseCost: 1e2,   costGrowth: 1.13 },
   { basePeriod: 20,  baseCost: 1.5e4, costGrowth: 1.16 },
   { basePeriod: 40,  baseCost: 1.2e6, costGrowth: 1.19 },
   { basePeriod: 80,  baseCost: 3e8,   costGrowth: 1.22 },
@@ -58,8 +58,8 @@ export const SCENARIOS: ScenarioDef[] = [
   {
     id: "s2", name: "2", diff: "4 tiers · growth +0.05 each · spans start 50",
     tiers: chain([
-      { basePeriod: 5,  baseCost: 10,    costGrowth: 1.15 },
-      { basePeriod: 10, baseCost: 1.5e2, costGrowth: 1.18 },
+      { basePeriod: 5,  baseCost: 3,     costGrowth: 1.15 },
+      { basePeriod: 10, baseCost: 1e2,   costGrowth: 1.18 },
       { basePeriod: 20, baseCost: 1.5e4, costGrowth: 1.21 },
       { basePeriod: 40, baseCost: 1.2e6, costGrowth: 1.24 },
     ]),

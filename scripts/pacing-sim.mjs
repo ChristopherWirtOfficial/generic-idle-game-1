@@ -44,9 +44,14 @@ function buyPass() {
 }
 
 const seenTier = new Set();
+let earlyBuys = 0;
 for (let t = 0; t < HOURS * 3600; t++) {
   C.step(s, 1);
   buyPass();
+  if (t < 180 && s.tiers[0].bought > earlyBuys) {
+    log.push([t, `buy #${s.tiers[0].bought} of tier 1`]);
+    earlyBuys = s.tiers[0].bought;
+  }
   for (let i = 0; i < s.tiers.length; i++) {
     if (!seenTier.has(i) && s.tiers[i].bought > 0) {
       seenTier.add(i);
