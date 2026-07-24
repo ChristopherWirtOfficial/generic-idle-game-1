@@ -32,20 +32,77 @@ export const GLOW_PERIOD_S = 0.3;
  * - speed: per second spent watching a wheel that hasn't graduated to glow, NOT
  *   per completion — completions scale as 1/period, which handed fast tiers a
  *   flood and starved 640s tiers to nothing.
+ *
+ * Value 20→40 and speed 0.25→0.75 alongside the shaping floor. A chained run is
+ * seconds long, so cost (which fires on every doubling) drowned value (which
+ * needs 25 hand-buys) and speed (which needs a clock) in the RAW signal — 90%
+ * cost. Shaping alone left the floor doing all the work against that. These
+ * make the raw signal less lopsided before it is shaped; the cap keeps a
+ * runaway speed line from exceeding 2.2 even splits.
  */
-export const VALUE_PER_MILESTONE = 20;
+export const VALUE_PER_MILESTONE = 40;
 export const COST_PER_DOUBLING = 20;
-export const SPEED_PER_SEC = 0.25;
+export const SPEED_PER_SEC = 0.5;
 
 /**
- * Draw weight for a tier is divided by (1 + POOL_DAMP × levels already held on
- * that tier). The raw loop is positive feedback — cost levels make a tier
- * cheaper, so you buy more of it, so it writes more weight, so it is offered
- * more — and this turns it negative: the deeper your stake in a tier, the more
- * the pool leans elsewhere. Damping is per TIER, not per (tier,stat), so it
- * never refuses to sell you the specific line you are building.
+ * NEED: how much a LINE's earned weight is worth once you already hold levels
+ * there. Two exponents, because the question has two halves and they want very
+ * different strengths.
+ *
+ * NEED_TIER_P (gentle): a tier you are deep in leans the pool elsewhere. This
+ * is the old per-tier damping, kept, because the cost loop really is positive
+ * feedback — cheaper, so bought more, so more weight, so offered more.
+ *
+ * NEED_P (sharp): within a tier, a LINE you have poured levels into gets rare
+ * while its neighbours do not. This is the graft, and it is the whole fix for
+ * "I never get the tier-1 value card". Per-TIER damping alone had a perverse
+ * consequence nobody intended: a veteran's ~200 tier-1 COST levels shrank
+ * tier-1 VALUE by exactly as much, so the line you had starved was punished
+ * for the line you had gorged. Three of the five explorations arrived at this
+ * same line of code independently.
+ *
+ * Applied to the floor slice too, not just the earned weight — otherwise the
+ * floor is a standing promise that never diminishes, which is a focus engine.
  */
-export const POOL_DAMP = 0.02;
+export const NEED_TIER_P = 0.25;
+export const NEED_P = 2;
+
+/**
+ * Signal → odds. The behavioural sources are right: a run that was all buying
+ * really should lean cost. Raw PROPORTIONALITY was wrong. Cost weight is
+ * 20·log2(stake) and lands in the hundreds; speed weight is 0.25/s and a
+ * chained run is eight seconds long, so it lands at two. Fifty to one becomes
+ * "cost, always" — measured at 86% of every card offered past the first hour,
+ * with tier-1 value at 2%.
+ *
+ * So sample on w^POOL_ALPHA instead. The exponent preserves the ORDER of the
+ * signal (more engagement is still more odds) and destroys the landslide:
+ * fifty to one becomes six to one. It is the same knob a designer reaches for
+ * when a leaderboard is technically correct and unreadable.
+ */
+export const POOL_ALPHA = 0.45;
+
+/**
+ * Then rails, both quoted in EVEN SPLITS — if the player knows n lines, an even
+ * split is 1/n, and these are the multiples of it no line may pass. Quoting
+ * them this way is what makes the shape scale-free: the pool looks the same at
+ * three known lines and at twenty-one, and the histogram can draw one tick at
+ * the even split with the whole band read off it.
+ *
+ * FLOOR: never below a quarter of an even split. Tier-1 value is one of the
+ * largest income levers in the game and the pool had stopped offering it at
+ * all — because in a chained run you cross no tier-1 milestone, and w^alpha of
+ * zero is still zero. Only a floor answers a zero. It is not a menu: it buys a
+ * line the right to turn up, and nothing else — everything above it is earned.
+ *
+ * CAP: never above 2.2 even splits, and the spill goes out FLAT rather than
+ * proportionally, so it reaches the lines that earned nothing instead of
+ * handing the landslide to the next cost line down. This is the rail the
+ * histogram states loudest: capped bars sit exactly level with each other, so
+ * you can see the run's loudest habit has stopped buying more of the draw.
+ */
+export const POOL_FLOOR = 0.25;
+export const POOL_CAP = 2.2;
 
 export const NUM_CLAMP = 1e300;
 

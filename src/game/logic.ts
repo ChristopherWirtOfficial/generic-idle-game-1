@@ -1,6 +1,7 @@
 import {
   BASE_DRAW, COST_PER_DOUBLING, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY,
-  NUM_CLAMP, POOL_DAMP, RARITY_LEVELS, RARITY_WEIGHT, SPEED_PER_SEC, VALUE_PER_MILESTONE, scenarioById,
+  NEED_P, NEED_TIER_P, NUM_CLAMP, POOL_ALPHA, POOL_CAP, POOL_FLOOR, RARITY_LEVELS, RARITY_WEIGHT, SPEED_PER_SEC,
+  VALUE_PER_MILESTONE, scenarioById,
 } from "./constants";
 import { D, Decimal, ZERO, isFiniteD } from "./num";
 import type { BuyAmount, Card, DrawOffer, GameState, ScenarioDef, ScenarioProgress, Stat, TierState } from "./types";
@@ -316,29 +317,119 @@ export function visibleTiers(s: GameState): number {
 // ---------- Draws ----------
 
 /**
- * How much a tier's earned weight is worth once you already hold levels there.
- * Diminishing by design: you want fewer cards for a tier the deeper you are in
- * it, and without this the cost loop feeds itself (cheaper → bought more →
- * more weight → offered more → cheaper).
+ * How much a LINE's earned weight is worth given what you already hold.
+ *
+ * Two factors. The tier factor is gentle and answers "am I deep in this tier";
+ * the cell factor is sharp and answers "have I already been given THIS line".
+ * Per-tier alone was perverse: 200 tier-1 cost levels suppressed tier-1 value
+ * just as hard, so the starved line was punished for the gorged one.
  */
-export function tierDamp(s: GameState, tier: number): number {
+export function lineNeed(s: GameState, tier: number, stat: Stat): number {
   const row = prog(s).tableau[tier];
-  const levels = row ? row.value + row.speed + row.cost : 0;
-  return 1 / (1 + POOL_DAMP * levels);
+  const tierLevels = row ? row.value + row.speed + row.cost : 0;
+  const cellLevels = row?.[stat] ?? 0;
+  return (1 / Math.pow(1 + tierLevels, NEED_TIER_P)) * (1 / Math.pow(1 + cellLevels, NEED_P));
 }
 
-/** Draw weights as they will ACTUALLY be rolled — damping included, so the
- *  RESET histogram shows the real odds rather than the raw tally. */
-export function poolEntries(s: GameState): Array<{ tier: number; stat: Stat; w: number }> {
-  const out: Array<{ tier: number; stat: Stat; w: number }> = [];
-  for (const [tierStr, row] of Object.entries(s.pool)) {
-    const tier = Number(tierStr);
-    const damp = tierDamp(s, tier);
+/**
+ * Every line that can be drawn: three stats on each tier the player has opened,
+ * carrying the effective (damped) weight this run wrote to it. Lines at zero
+ * are in the list ON PURPOSE — they are what the floor lands on, and they are
+ * the reason a stat you have neglected is never quite off the table.
+ * This is the SIGNAL. poolEntries below is the signal mapped to odds.
+ */
+export function poolSlots(s: GameState): Array<{ tier: number; stat: Stat; w: number; damp: number }> {
+  const out: Array<{ tier: number; stat: Stat; w: number; damp: number }> = [];
+  const n = scen(s).tiers.length;
+  for (let tier = 0; tier < n; tier++) {
+    const row = s.pool[tier];
+    const wrote = row !== undefined && (row.value > 0 || row.speed > 0 || row.cost > 0);
+    if (!wrote && !tierKnown(s, tier)) continue;
     for (const stat of ["value", "speed", "cost"] as const) {
-      if (row[stat] > 0) out.push({ tier, stat, w: row[stat] * damp });
+      const damp = lineNeed(s, tier, stat);
+      out.push({ tier, stat, w: (row?.[stat] ?? 0) * damp, damp });
     }
   }
   return out;
+}
+
+/**
+ * Signal → odds, the whole shaping step in one pure function: raise each weight
+ * to POOL_ALPHA, normalise, then hand POOL_FLOOR of the mass back out flat.
+ * Returns probabilities summing to 1.
+ *
+ * The knobs are arguments so the pacing sim can replay a captured pool at other
+ * exponents without keeping a second copy of the formula. The sim's ALPHA SWEEP
+ * table is this function, not a re-derivation of it.
+ */
+export function shapeWeights(
+  ws: number[], alpha = POOL_ALPHA, floor = POOL_FLOOR, cap = POOL_CAP, basis?: number[],
+): number[] {
+  const n = ws.length;
+  if (n === 0) return [];
+  // The floor is shared out along `basis` (the per-tier damping) rather than
+  // dead flat. A flat floor is a promise that never diminishes, and a promise
+  // that never diminishes is a focus engine: pour every pick into one line and
+  // the pool keeps handing it back at full odds forever. Damping the floor puts
+  // it under the same law as every other weight — the deeper your stake in a
+  // tier, the more the whole pool leans away from it, base slice included.
+  const bs = basis && basis.length === n ? basis : ws.map(() => 1);
+  const bTot = bs.reduce((a, b) => a + b, 0) || n;
+  const shaped = ws.map((w) => (w > 0 ? Math.pow(w, alpha) : 0));
+  const total = shaped.reduce((a, b) => a + b, 0);
+  // Nothing written yet (a fresh run): the floor is all there is, so it is all
+  // of it. Spread over what you know beats a hardcoded consolation card.
+  if (!(total > 0)) return bs.map((b) => b / bTot);
+  const p = shaped.map((x, i) => (1 - floor) * (x / total) + floor * (bs[i]! / bTot));
+  // Ceiling, filled with water: whatever a line is holding above the cap is
+  // poured out in equal measure over the lines still under it, repeatedly,
+  // until nothing is above. Uniform spill and not proportional spill is the
+  // whole point — proportional spill just hands a cost landslide back to the
+  // next cost line down. A cap below uniform is not a cap, so it never is.
+  const lid = Math.max(cap, 1) / n;
+  for (let pass = 0; pass < 24; pass++) {
+    let excess = 0, under = 0;
+    for (const x of p) { if (x > lid + 1e-12) excess += x - lid; else under++; }
+    if (excess <= 1e-12 || under === 0) break;
+    const share = excess / under;
+    for (let i = 0; i < n; i++) p[i] = p[i]! > lid + 1e-12 ? lid : p[i]! + share;
+  }
+  return p;
+}
+
+export interface PoolEntry {
+  tier: number;
+  stat: Stat;
+  /** Probability this line wins any one card of the draw. Sums to 1. */
+  w: number;
+  /** The part of w this run earned, above the flat floor. */
+  earned: number;
+  /** The flat slice every known line gets. */
+  floor: number;
+  /** True when this line is pinned at the ceiling — it cannot buy more draw. */
+  capped: boolean;
+}
+
+/**
+ * The odds a card is ACTUALLY rolled against — shaping, floor and damping all
+ * applied — because the RESET histogram draws straight off this. The instrument
+ * never lies: if the bar says 12%, the roll says 12%.
+ */
+export function poolEntries(s: GameState): PoolEntry[] {
+  const slots = poolSlots(s);
+  const ps = shapeWeights(slots.map((e) => e.w), POOL_ALPHA, POOL_FLOOR, POOL_CAP, slots.map((e) => e.damp));
+  const n = slots.length;
+  const bTot = slots.reduce((a, e) => a + e.damp, 0) || n;
+  const budget = slots.some((e) => e.w > 0) ? POOL_FLOOR : 1;
+  const lid = n === 0 ? 1 : Math.max(POOL_CAP, 1) / n;
+  return slots.map((e, i) => {
+    const fl = n === 0 ? 0 : budget * (e.damp / bTot);
+    return {
+      tier: e.tier, stat: e.stat, w: ps[i]!,
+      earned: Math.max(0, ps[i]! - fl), floor: fl,
+      capped: ps[i]! >= lid - 1e-9 && e.w > 0,
+    };
+  });
 }
 
 export function rollDraw(s: GameState, rand: () => number): DrawOffer {
@@ -346,9 +437,16 @@ export function rollDraw(s: GameState, rand: () => number): DrawOffer {
   const finalRun = Decimal.min(D(NUM_CLAMP), s.runScore.plus(liquidated));
   const picks = picksFor(s, finalRun);
   const nCards = BASE_DRAW + s.bankedDraws;
-  const entries = poolEntries(s);
+  const slots = poolSlots(s);
+  const ps = shapeWeights(slots.map((e) => e.w), POOL_ALPHA, POOL_FLOOR, POOL_CAP, slots.map((e) => e.damp));
   const cards: Card[] = [];
   const p = prog(s);
+  // Without replacement. Three cards sampled independently from a skewed pool
+  // were the SAME card about half the time, which spends the whole "choose from
+  // N" premise on nothing. The bag holds every line still unoffered this hand;
+  // it only refills once the hand has run through all of them, so a repeat is
+  // impossible until a repeat is unavoidable.
+  let bag = slots.map((_, i) => i);
   for (let k = 0; k < nCards; k++) {
     if (rand() < EXOTIC_CHANCE && cards.every((c) => c.kind === "stat")) {
       if (!p.flywheel && rand() < 0.5) {
@@ -358,14 +456,17 @@ export function rollDraw(s: GameState, rand: () => number): DrawOffer {
       cards.push({ kind: "hotstart", tier: -1, stat: null, levels: HOTSTART_BONUS, rarity: 1 });
       continue;
     }
-    const totalW = entries.reduce((a, e) => a + e.w, 0);
-    if (totalW <= 0 || entries.length === 0) {
+    if (slots.length === 0) {
       cards.push({ kind: "stat", tier: 0, stat: "value", levels: RARITY_LEVELS[0], rarity: 0 });
       continue;
     }
+    if (bag.length === 0) bag = slots.map((_, i) => i);
+    const totalW = bag.reduce((a, i) => a + ps[i]!, 0);
     let roll = rand() * totalW;
-    let chosen = entries[0]!;
-    for (const e of entries) { roll -= e.w; if (roll <= 0) { chosen = e; break; } }
+    let at = 0;
+    for (; at < bag.length - 1; at++) { roll -= ps[bag[at]!]!; if (roll <= 0) break; }
+    const chosen = slots[bag[at]!]!;
+    bag.splice(at, 1);
     const rr = rand();
     const rarity: 0 | 1 | 2 = rr < RARITY_WEIGHT[2] ? 2 : rr < RARITY_WEIGHT[2] + RARITY_WEIGHT[1] ? 1 : 0;
     cards.push({ kind: "stat", tier: chosen.tier, stat: chosen.stat, levels: RARITY_LEVELS[rarity], rarity });

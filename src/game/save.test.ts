@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { SAVE_KEY } from "./constants";
+import { COST_PER_DOUBLING, SAVE_KEY } from "./constants";
 import { SAVE_VERSION } from "./migrations";
 import { applyPick, buyTier, tableauLevels } from "./logic";
 import { freshState } from "./state";
@@ -32,7 +32,7 @@ describe("save round-trip", () => {
     expect(r.tiers[0]!.bought).toBe(30);
     expect(r.tiers[0]!.phase).toBeCloseTo(0.61, 9);
     expect(tableauLevels(r, 0, "speed")).toBe(4);
-    expect(r.pool[0]!.cost).toBeCloseTo(20 * Math.log2(31), 9);
+    expect(r.pool[0]!.cost).toBeCloseTo(COST_PER_DOUBLING * Math.log2(31), 9);
   });
 
   it("falls back to fresh on a corrupt save", async () => {
