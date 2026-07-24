@@ -293,27 +293,20 @@ export function doReset(s: GameState, now = Date.now()): void {
   s.tiers = s.tiers.map((t): TierState => ({ count: 0, bought: 0, phase: t.phase, cycles: 0 }));
   while (s.tiers.length < defs.length) s.tiers.push({ count: 0, bought: 0, phase: 0, cycles: 0 });
   s.runScore = 0;
-  s.score = startingScore(s);
+  s.score = 0;
   s.pool = {};
   s.bankedDraws = 0;
   s.runStartedAt = now;
-  if (p.hotstart > 0) {
-    const t0 = s.tiers[0];
-    if (t0) { t0.count += p.hotstart; t0.bought += p.hotstart; }
-  }
+  // Every run begins with one tier 1 already on the wheel — held, not bought:
+  // starting units never touch the price ladder or milestones. Hotstart stacks.
+  const t0 = s.tiers[0];
+  if (t0) t0.count += 1 + p.hotstart;
   if (p.flywheel) {
     for (let i = 0; i < defs.length; i++) {
       const st = s.tiers[i];
       if (st) st.phase = 0.999;
     }
   }
-}
-
-/** Every run starts able to afford exactly one tier 1. */
-export function startingScore(s: GameState): number {
-  const def = scen(s).tiers[0];
-  if (!def) return 3;
-  return Math.ceil(def.baseCost / tableauMult(s, 0, "cst"));
 }
 
 export function switchScenario(s: GameState, id: string, now = Date.now()): void {
@@ -324,10 +317,8 @@ export function switchScenario(s: GameState, id: string, now = Date.now()): void
   s.pool = {};
   s.bankedDraws = 0;
   s.runStartedAt = now;
-  prog(s); // materialize
-  s.score = startingScore(s);
-  if (prog(s).hotstart > 0) {
-    const t0 = s.tiers[0];
-    if (t0) { t0.count += prog(s).hotstart; t0.bought += prog(s).hotstart; }
-  }
+  const p = prog(s); // materialize
+  s.score = 0;
+  const t0 = s.tiers[0];
+  if (t0) t0.count += 1 + p.hotstart;
 }

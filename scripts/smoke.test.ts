@@ -4,7 +4,7 @@ import {
 } from "../src/game/constants";
 import {
   applyPick, buyTier, clampState, doReset, liquidationValue, maxAffordable, milestoneLevel,
-  period, pickThresholds, picksFor, poolEntries, prog, rollDraw, scoreRate, startingScore,
+  period, pickThresholds, picksFor, poolEntries, prog, rollDraw, scoreRate,
   step, switchScenario, tableauLevels, threshScale, tierCost, unitValue, visibleTiers,
 } from "../src/game/logic";
 import { freshState } from "../src/game/state";
@@ -34,7 +34,7 @@ console.log("— cycles: one formula, no piecewise —");
 {
   const a = freshState(0);
   const t0 = a.tiers[0]!;
-  t0.count = 10; t0.bought = 10; t0.phase = 0;
+  t0.count = 10; t0.bought = 10; t0.phase = 0; // absolute, replacing the starting unit
   step(a, 100);
   // base period 2s → 50 completions × 10 held × value 1
   close(a.runScore, 500, 0.001, "discrete regime pays count × cycles");
@@ -51,6 +51,7 @@ console.log("— cycles: one formula, no piecewise —");
 console.log("— unowned wheels freeze —");
 {
   const s = freshState(0);
+  s.tiers[0]!.count = 0; // empty the starting unit for this test
   s.tiers[0]!.phase = 0.2;
   step(s, 3);
   close(s.tiers[0]!.phase, 0.2, 1e-9, "empty tier holds its phase through step");
@@ -58,6 +59,7 @@ console.log("— unowned wheels freeze —");
   step(s, 1.4); // period 2s: adv 0.7, total 0.9 — resumes from 0.2, no completion yet
   close(s.tiers[0]!.phase, 0.9, 1e-9, "owned tier resumes from the frozen phase");
   const o = freshState(0);
+  o.tiers[0]!.count = 0;
   o.tiers[0]!.phase = 0.4;
   applyOffline(o, BANK_MS);
   close(o.tiers[0]!.phase, 0.4, 1e-9, "empty tier holds its phase through time away");
@@ -66,6 +68,7 @@ console.log("— unowned wheels freeze —");
 console.log("— costs are bought-only —");
 {
   const s = freshState(0);
+  s.score = 1e4; // runs now open at score 0 — fund the test wallet
   const c0 = tierCost(s, 0, 1);
   s.tiers[0]!.count = 500; // produced units
   close(tierCost(s, 0, 1), c0, 1e-9, "produced units never touch price");
@@ -160,16 +163,19 @@ console.log("— reset: phase stays, rest goes —");
   s.tiers[0]!.phase = 0.37;
   s.runScore = 5e5;
   doReset(s, 1000);
-  ok(s.tiers[0]!.bought === 0 && s.tiers[0]!.count === 0, "stock and bought reset");
+  ok(s.tiers[0]!.bought === 0, "bought resets");
+  ok(s.tiers[0]!.count === 1, "runs start holding one tier 1");
   close(s.tiers[0]!.phase, 0.37, 1e-9, "phase persists — warm wheels");
   ok(poolEntries(s).length === 0, "pool cleared");
-  close(s.score, startingScore(s), 1e-9, "restart with exactly one tier 1 affordable");
+  close(s.score, 0, 1e-9, "score restarts at zero");
+  ok(tierCost(s, 0, 1) === 5, "starting unit never touched the price ladder");
   ok(prog(s).resets === 1, "reset counted");
 
   applyPick(s, { kind: "hotstart", tier: -1, stat: null, levels: 5, rarity: 1 });
   applyPick(s, { kind: "flywheel", tier: -1, stat: null, levels: 1, rarity: 2 });
   doReset(s, 2000);
-  ok(s.tiers[0]!.bought === 5, "hotstart pre-buys tier 1");
+  ok(s.tiers[0]!.count === 6, "hotstart stacks on the starting unit");
+  ok(s.tiers[0]!.bought === 0, "gifts are held, not bought");
   ok(s.tiers.every((t) => t.phase > 0.99), "flywheel arms every wheel");
 }
 
@@ -236,7 +242,7 @@ console.log("— save round-trip —");
   ok(tableauLevels(r, 0, "spd") === 4, "tableau survives");
   close(r.pool[0]!.cst, 30, 1e-9, "pool survives");
   const { state: fresh } = await (async () => { mem.set(SAVE_KEY, "{corrupt"); return loadGame(Date.now()); })();
-  ok(fresh.score === startingScore(fresh), "corrupt save falls back fresh");
+  ok(fresh.score === 0 && fresh.tiers[0]!.count === 1, "corrupt save falls back fresh");
 }
 
 if (failures > 0) { console.error(`\n${failures} failure(s)`); process.exit(1); }

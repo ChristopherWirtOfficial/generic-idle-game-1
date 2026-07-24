@@ -1,5 +1,4 @@
 import { SCENARIOS } from "./constants";
-import { startingScore } from "./logic";
 import type { GameState } from "./types";
 
 export function freshState(now = Date.now()): GameState {
@@ -16,6 +15,7 @@ export function freshState(now = Date.now()): GameState {
     lastSeen: now,
     runStartedAt: now,
   };
-  s.score = startingScore(s);
+  const t0 = s.tiers[0];
+  if (t0) t0.count = 1; // the machine is already breathing when you arrive
   return s;
 }

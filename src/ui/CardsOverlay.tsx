@@ -7,7 +7,7 @@ interface Props { offer: DrawOffer; onDone: (picked: Card[]) => void; }
 
 function cardText(c: Card): { big: string; small: string; tc: string | null } {
   if (c.kind === "flywheel") return { big: "FLYWHEEL", small: "every reset: all wheels complete once", tc: null };
-  if (c.kind === "hotstart") return { big: `START +${c.levels}`, small: "runs begin with tier 1 pre-bought", tc: null };
+  if (c.kind === "hotstart") return { big: `START +${c.levels}`, small: "runs begin holding more tier 1", tc: null };
   return { big: `${(c.tier ?? 0) + 1} ${c.stat} +${c.levels}`, small: `tier ${(c.tier ?? 0) + 1} ${c.stat === "cst" ? "costs down" : c.stat === "spd" ? "cycles faster" : "pays more"}`, tc: hue(c.tier) };
 }
 
