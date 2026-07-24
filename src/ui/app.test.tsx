@@ -237,6 +237,26 @@ describe("more tab", () => {
   });
 });
 
+describe("log tab", () => {
+  beforeAll(async () => {
+    byText(".tabbar button", "LOG")!.click();
+    await sleep(200);
+  });
+
+  it("lists notes with only headlines showing", () => {
+    expect($$(".logentry").length).toBeGreaterThanOrEqual(1);
+    // One open at a time keeps it scannable rather than a wall of text.
+    expect($$(".logentry.open")).toHaveLength(1);
+    expect($(".logentry.open .logbodypad p")).not.toBeNull();
+  });
+
+  it("toggles an entry shut", async () => {
+    $$(".logentry .loghead")[0]!.click();
+    await sleep(250);
+    expect($$(".logentry.open")).toHaveLength(0);
+  });
+});
+
 describe("persistence", () => {
   it("writes a save when the tab hides, with phase held exactly", async () => {
     store.delete("gig1:save3");

@@ -166,16 +166,31 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
               <span className="flow">
                 {dead ? (
                   "dead link"
-                ) : known ? (
+                ) : !known ? (
+                  <>→ <span className="tgt">{targetName}</span></>
+                ) : !isLive ? (
                   <>
-                    <span className="pay">{fmtVal(unitValue(state, i))}</span>
+                    <span className="sep">stopped ·</span> pays <span className="tgt">{targetName}</span>
+                  </>
+                ) : glowing ? (
+                  // Past the glow line there is no discrete payout to point at:
+                  // the wheel isn't ticking, it's pouring. So quote a rate.
+                  <>
+                    <span className="pay">{fmtRate(throughput(state, i))}/s</span>
+                    {" → "}
+                    <span className="tgt">{targetName}</span>
+                  </>
+                ) : (
+                  // What actually lands each time the wheel comes round — held x
+                  // unit value, not the per-unit value, which is never the number
+                  // you see arrive.
+                  <>
+                    <span className="pay">{fmt(held.times(unitValue(state, i)))}</span>
                     {" → "}
                     <span className="tgt">{targetName}</span>
                     <span className="sep">·</span>
-                    {isLive ? <span className="rate">{fmtRate(throughput(state, i))}/s</span> : "stopped"}
+                    <span className="rate">{fmtRate(throughput(state, i))}/s</span>
                   </>
-                ) : (
-                  <>→ <span className="tgt">{targetName}</span></>
                 )}
               </span>
               {/* Tableau levels at rest. The one thing you otherwise have to open

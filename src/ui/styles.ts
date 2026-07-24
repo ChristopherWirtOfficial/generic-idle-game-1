@@ -263,6 +263,33 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .dangerbtn { width: 100%; border: 1px solid #C86A6A55; color: #D89E9E; border-radius: 12px; padding: 12px; font-size: 13px; margin-top: 12px; }
 .dangerbtn.armed { background: #3A2222; }
 
+/* ---------- Log: notes, one at a time ---------- */
+.logentry { border-bottom: 1px solid var(--edge); }
+.logentry:last-child { border-bottom: none; }
+.loghead {
+  width: 100%; display: flex; align-items: center; gap: 9px;
+  padding: 11px 2px; text-align: left;
+}
+.logdot { flex: none; width: 6px; height: 6px; border-radius: 99px; background: var(--faint); }
+.k-shipped .logdot { background: #9ED89E; }
+.k-choice  .logdot { background: #E8C07A; }
+.k-open    .logdot { background: #C88B8B; }
+.k-running .logdot { background: #8FB8D8; animation: logpulse 2s ease-in-out infinite; }
+@keyframes logpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.logtitle { flex: 1; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+.logentry.open .logtitle { color: var(--text); }
+.logentry:not(.open) .logtitle { color: var(--dim); }
+.logkind {
+  flex: none; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--faint); white-space: nowrap;
+}
+.logbody { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s var(--ease); }
+.logentry.open .logbody { grid-template-rows: 1fr; }
+.logbodyin { min-height: 0; overflow: hidden; }
+.logbodypad { padding: 0 2px 12px 15px; display: flex; flex-direction: column; gap: 7px; }
+.logbodypad p { font-size: 11.5px; line-height: 1.6; color: var(--dim); }
+.logwhen { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
+
 .tabbar { flex: none; display: flex; border-top: 1px solid var(--edge); background: #101216; padding-bottom: env(safe-area-inset-bottom); }
 .tabbar button { flex: 1; padding: 13px 0 14px; color: var(--faint); font-size: 12px; letter-spacing: 0.14em; }
 .tabbar button.on { color: var(--text); }

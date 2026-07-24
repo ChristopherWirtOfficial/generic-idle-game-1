@@ -11,6 +11,7 @@ import { QuantityBar } from "./ui/QuantityBar";
 import { ResetPanel } from "./ui/ResetPanel";
 import { CardsOverlay } from "./ui/CardsOverlay";
 import { MorePanel } from "./ui/MorePanel";
+import { LogPanel } from "./ui/LogPanel";
 import { TabBar, type TabId } from "./ui/TabBar";
 import { OfflineModal } from "./ui/OfflineModal";
 
@@ -213,6 +214,7 @@ export default function App(): JSX.Element {
         {tab !== "buy" && (
           <div className="deck">
             {tab === "reset" && <ResetPanel state={s} onReset={onReset} />}
+            {tab === "log" && <LogPanel />}
             {tab === "more" && (
               <MorePanel
                 state={s} onSwitch={onSwitch} onErase={onErase}
