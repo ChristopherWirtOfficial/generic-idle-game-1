@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SAVE_INTERVAL_MS, TICK_MS } from "./game/constants";
+import { OFFLINE_MIN_MS, SAVE_INTERVAL_MS, SCENARIOS, TICK_MS } from "./game/constants";
 import { applyPick, buyTier, doReset, prog, rollDraw, scen, scoreRate, step, switchScenario } from "./game/logic";
+import { applyOffline, eraseSave, loadGame, persist } from "./game/save";
 import { freshState } from "./game/state";
-import { eraseSave, loadGame, persist } from "./game/save";
 import { fmt, fmtRate } from "./game/format";
 import type { Card, DrawOffer, GameState, OfflineReport } from "./game/types";
 import { CSS } from "./ui/styles";
@@ -16,69 +16,100 @@ import { OfflineModal } from "./ui/OfflineModal";
 
 export default function App(): JSX.Element {
   const stateRef = useRef<GameState | null>(null);
-  const [ready, setReady] = useState(false);
   const [, setFrame] = useState(0);
   const bump = useCallback(() => setFrame((f) => (f + 1) % 1_000_000), []);
 
+  const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<TabId>("buy");
   const [sel, setSel] = useState(0);
   const [amount, setAmount] = useState<BuyAmount>(1);
   const [offer, setOffer] = useState<DrawOffer | null>(null);
   const [offline, setOffline] = useState<OfflineReport | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
-  const bannerTimer = useRef<number | null>(null);
-  const beatenSeen = useRef(false);
 
-  const toast = useCallback((msg: string) => {
-    setBanner(msg);
-    if (bannerTimer.current !== null) window.clearTimeout(bannerTimer.current);
-    bannerTimer.current = window.setTimeout(() => setBanner(null), 4200);
-  }, []);
+  const beatenShown = useRef<Set<string>>(new Set());
+  const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hiddenAt = useRef<number>(0);
 
+  // ---- load
   useEffect(() => {
     let alive = true;
-    void loadGame().then(({ state, offline: rep }) => {
+    void loadGame().then(({ state, offline: report }) => {
       if (!alive) return;
       stateRef.current = state;
-      beatenSeen.current = prog(state).beaten;
-      if (rep) setOffline(rep);
+      for (const [id, p] of Object.entries(state.progress)) {
+        if (p.beaten) beatenShown.current.add(id);
+      }
+      setOffline(report);
       setReady(true);
     });
     return () => { alive = false; };
   }, []);
 
+  const showBanner = useCallback((text: string) => {
+    setBanner(text);
+    if (bannerTimer.current) clearTimeout(bannerTimer.current);
+    bannerTimer.current = setTimeout(() => setBanner(null), 6000);
+  }, []);
+
+  // ---- tick
   useEffect(() => {
     if (!ready) return;
-    let last = performance.now();
-    const id = window.setInterval(() => {
+    let last = Date.now();
+    const id = setInterval(() => {
       const s = stateRef.current;
       if (!s) return;
-      const now = performance.now();
-      const dt = Math.min(2, (now - last) / 1000);
+      const now = Date.now();
+      const dt = Math.min(2000, Math.max(0, now - last)) / 1000;
       last = now;
       step(s, dt);
-      if (!beatenSeen.current && prog(s).beaten) {
-        beatenSeen.current = true;
-        toast(`SCENARIO ${scen(s).name} BEAT — ${fmt(scen(s).goal)} in one run. Next opened.`);
+      const p = prog(s);
+      if (p.beaten && !beatenShown.current.has(s.scenario)) {
+        beatenShown.current.add(s.scenario);
+        const idx = SCENARIOS.findIndex((sc) => sc.id === s.scenario);
+        const next = SCENARIOS[idx + 1];
+        showBanner(next
+          ? `goal ${fmt(scen(s).goal)} met — scenario ${next.name} is open`
+          : `goal ${fmt(scen(s).goal)} met — that was the last one`);
       }
       bump();
     }, TICK_MS);
-    return () => window.clearInterval(id);
-  }, [ready, bump, toast]);
+    return () => clearInterval(id);
+  }, [ready, bump, showBanner]);
 
+  // ---- autosave + visibility
   useEffect(() => {
     if (!ready) return;
-    const save = (): void => { const s = stateRef.current; if (s) void persist(s); };
-    const id = window.setInterval(save, SAVE_INTERVAL_MS);
-    const onVis = (): void => { if (document.visibilityState === "hidden") save(); };
+    const save = () => { const s = stateRef.current; if (s) void persist(s); };
+    const id = setInterval(save, SAVE_INTERVAL_MS);
+    const onVis = () => {
+      const s = stateRef.current;
+      if (!s) return;
+      if (document.visibilityState === "hidden") {
+        hiddenAt.current = Date.now();
+        void persist(s);
+      } else if (hiddenAt.current > 0) {
+        const away = Date.now() - hiddenAt.current;
+        hiddenAt.current = 0;
+        if (away >= OFFLINE_MIN_MS) {
+          const report = applyOffline(s, away);
+          if (report.bankedGained > 0 || report.trickle >= 1) setOffline(report);
+          void persist(s);
+          bump();
+        }
+      }
+    };
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("beforeunload", save);
     return () => {
-      window.clearInterval(id);
+      clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("beforeunload", save);
     };
-  }, [ready]);
+  }, [ready, bump]);
+
+  // ---- handlers
+  const onSelect = useCallback((i: number) => { setSel(i); setTab("buy"); }, []);
 
   const onBuy = useCallback((i: number, n: number) => {
     const s = stateRef.current;
@@ -88,18 +119,18 @@ export default function App(): JSX.Element {
 
   const onReset = useCallback(() => {
     const s = stateRef.current;
-    if (!s || offer) return;
+    if (!s) return;
     setOffer(rollDraw(s, Math.random));
-  }, [offer]);
+  }, []);
 
   const onCeremonyDone = useCallback((picked: Card[]) => {
     const s = stateRef.current;
-    if (!s) { setOffer(null); return; }
+    if (!s) return;
     for (const c of picked) applyPick(s, c);
     doReset(s);
     setOffer(null);
-    setSel(0);
     setTab("buy");
+    setSel(0);
     void persist(s);
     bump();
   }, [bump]);
@@ -108,7 +139,6 @@ export default function App(): JSX.Element {
     const s = stateRef.current;
     if (!s) return;
     switchScenario(s, id);
-    beatenSeen.current = prog(s).beaten;
     setSel(0);
     setTab("buy");
     void persist(s);
@@ -116,57 +146,52 @@ export default function App(): JSX.Element {
   }, [bump]);
 
   const onErase = useCallback(() => {
-    void eraseSave().then(() => {
-      const s = freshState();
-      stateRef.current = s;
-      beatenSeen.current = false;
-      setSel(0);
-      setTab("buy");
-      setOffer(null);
-      bump();
-    });
+    void eraseSave();
+    stateRef.current = freshState();
+    beatenShown.current = new Set();
+    setOffer(null);
+    setSel(0);
+    setTab("buy");
+    bump();
   }, [bump]);
 
+  // ---- render
   const s = stateRef.current;
   if (!ready || !s) {
     return (
-      <>
+      <div className="app">
         <style>{CSS}</style>
-        <div className="app" style={{ alignItems: "center", justifyContent: "center", color: "#8B8E96", fontSize: 13 }}>
+        <div style={{ margin: "auto", color: "#8B8E96", fontFamily: "ui-monospace, Menlo, monospace", fontSize: 13 }}>
           warming the wheels…
         </div>
-      </>
+      </div>
     );
   }
 
-  const p = prog(s);
   return (
-    <>
+    <div className="app">
       <style>{CSS}</style>
-      <div className="app">
-        <div className="display">
-          <Rail state={s} sel={sel} onSelect={(i) => { setSel(i); setTab("buy"); }} />
-          <div className="scoreblock">
-            <div className="scorenum">{fmt(s.score)}</div>
-            <div className="scoresub">
-              <span><b>{fmtRate(scoreRate(s))}</b>/s</span>
-              <span>run <b>{fmt(s.runScore)}</b></span>
-              <span>best <b>{fmt(p.bestRun)}</b></span>
-            </div>
+      <div className="display">
+        <Rail state={s} sel={sel} onSelect={onSelect} />
+        <div className="scoreblock">
+          <div className="scorenum">{fmt(s.score)}</div>
+          <div className="scoresub">
+            <span><b>{fmtRate(scoreRate(s))}</b>/s</span>
+            <span>run <b>{fmt(s.runScore)}</b></span>
           </div>
         </div>
-        <div className="deck" style={{ position: "relative" }}>
-          {banner && <div className="banner"><b>{banner.split(" — ")[0]}</b>{banner.includes(" — ") ? banner.slice(banner.indexOf(" — ") + 3) : ""}</div>}
-          {tab === "buy" && (
-            <BuyPanel state={s} sel={sel} setSel={setSel} amount={amount} setAmount={setAmount} onBuy={onBuy} />
-          )}
-          {tab === "reset" && <ResetPanel state={s} onReset={onReset} />}
-          {tab === "more" && <MorePanel state={s} onSwitch={onSwitch} onErase={onErase} />}
-          <TabBar tab={tab} setTab={setTab} />
-        </div>
+      </div>
+      <div className="deck" style={{ position: "relative" }}>
+        {banner && <div className="banner" style={{ pointerEvents: "none" }}>{banner}</div>}
+        {tab === "buy" && (
+          <BuyPanel state={s} sel={sel} setSel={setSel} amount={amount} setAmount={setAmount} onBuy={onBuy} />
+        )}
+        {tab === "reset" && <ResetPanel state={s} onReset={onReset} />}
+        {tab === "more" && <MorePanel state={s} onSwitch={onSwitch} onErase={onErase} />}
+        <TabBar tab={tab} setTab={setTab} />
       </div>
       {offer && <CardsOverlay offer={offer} onDone={onCeremonyDone} />}
-      {offline && <OfflineModal report={offline} onClose={() => setOffline(null)} />}
-    </>
+      {offline && !offer && <OfflineModal report={offline} onClose={() => setOffline(null)} />}
+    </div>
   );
 }

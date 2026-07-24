@@ -110,8 +110,10 @@ const saved = store.get("gig1:save3");
 check("hidden tab persists a save", saved !== undefined);
 if (saved) {
   const parsed = JSON.parse(saved);
-  // Wheels keep turning during the test's real seconds; warm ≠ frozen. Zeroed would mean reset killed it.
-  check("phase survived the reset (still warm)", parsed.tiers[0].phase > 0.4, `${parsed.tiers[0].phase}`);
+  // Wheels keep turning during the test's real seconds; warm ≠ frozen. Tier 1's
+  // 5s period can wrap past 1.0 inside the test window, so assert on tier 2:
+  // seeded at 0.25 with a 10s period, it can only have advanced, never wrapped.
+  check("phase survived the reset (still warm)", parsed.tiers[1].phase > 0.3 && parsed.tiers[1].phase < 1, `${parsed.tiers[1].phase}`);
   check("picks recorded in progress", parsed.progress.s1.picks === 2, `${parsed.progress.s1.picks}`);
   check("pool cleared by reset", Object.keys(parsed.pool).length <= 1, JSON.stringify(parsed.pool));
 }
@@ -119,3 +121,4 @@ if (saved) {
 execSync("rm -rf .domtmp");
 if (failures > 0) { console.error(`\n${failures} FAILURES`); process.exit(1); }
 console.log("\ndom smoke: all green");
+process.exit(0);
