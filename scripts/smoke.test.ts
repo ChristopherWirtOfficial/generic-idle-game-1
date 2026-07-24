@@ -7,6 +7,7 @@ import {
   period, pickThresholds, picksFor, poolEntries, prog, rollDraw, scoreRate,
   step, switchScenario, tableauLevels, threshScale, tierCost, unitValue, visibleTiers,
 } from "../src/game/logic";
+import { fmtVal } from "../src/game/format";
 import { freshState } from "../src/game/state";
 import { applyOffline, loadGame, persist } from "../src/game/save";
 import type { Card, GameState, Stat } from "../src/game/types";
@@ -218,6 +219,14 @@ console.log("— clamp and affordability —");
   const n = maxAffordable(t, 0);
   ok(tierCost(t, 0, n) <= t.score, "maxAffordable is affordable");
   ok(tierCost(t, 0, n + 1) > t.score, "and maximal");
+}
+
+console.log("— honest small-value formatting —");
+{
+  ok(fmtVal(1.75) === "1.75", "1.75 shows exactly, never floored");
+  ok(fmtVal(0.875) === "0.875", "bridge efficiency fractions show exactly");
+  ok(fmtVal(2.5) === "2.5", "trailing zeros trimmed");
+  ok(fmtVal(21) === "21", "integers stay clean");
 }
 
 console.log("— save round-trip —");

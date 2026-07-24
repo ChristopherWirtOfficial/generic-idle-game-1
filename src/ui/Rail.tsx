@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { GLOW_PERIOD_S, TIER_HUES } from "../game/constants";
 import { period, scen, throughput, tierCost, tierKnown, unitValue, visibleTiers } from "../game/logic";
-import { fmt, fmtRate } from "../game/format";
+import { fmt, fmtRate, fmtVal } from "../game/format";
 import type { GameState } from "../game/types";
 
 export function hue(i: number): string {
@@ -112,7 +112,7 @@ export function Rail({ state, sel, onSelect, tickedAt }: Props): JSX.Element {
             {def.baseValue <= 0
               ? "dead link"
               : live
-                ? <>→ {targetName} · <b>{fmtRate(throughput(state, i))}</b>/s · {fmt(unitValue(state, i))} × {fmt(Math.floor(st.count))}</>
+                ? <>→ {targetName} · <b>{fmtRate(throughput(state, i))}</b>/s · {fmtVal(unitValue(state, i))} × {fmt(Math.floor(st.count))}</>
                 : <>holding phase · pays {targetName}</>}
           </span>
           <span className="ntag">{i + 1}</span>

@@ -1,6 +1,6 @@
 import { hue } from "./Rail";
-import { scen, maxAffordable, milestoneLevel, nextMilestoneAt, period, tableauLevels, tierCost, unitValue, visibleTiers } from "../game/logic";
-import { fmt } from "../game/format";
+import { scen, maxAffordable, milestoneLevel, nextMilestoneAt, period, tableauLevels, tableauMult, tierCost, unitValue, visibleTiers } from "../game/logic";
+import { fmt, fmtVal } from "../game/format";
 import type { GameState } from "../game/types";
 
 export type BuyAmount = 1 | 10 | "max";
@@ -35,7 +35,12 @@ export function BuyPanel({ state, sel, setSel, amount, setAmount, onBuy }: Props
 
   const chips = (["spd", "val", "cst"] as const).map((stat) => {
     const L = tableauLevels(state, i, stat);
-    return <span key={stat} className={`chip${L > 0 ? " lit" : ""}`}>{stat} L{L}</span>;
+    const m = tableauMult(state, i, stat);
+    return (
+      <span key={stat} className={`chip${L > 0 ? " lit" : ""}`}>
+        {stat} L{L}{L > 0 ? ` ×${fmtVal(m)}` : ""}
+      </span>
+    );
   });
 
   return (
@@ -49,7 +54,7 @@ export function BuyPanel({ state, sel, setSel, amount, setAmount, onBuy }: Props
       </div>
       <div className="scrollarea">
         <div className="kv"><span>held / bought by hand</span><b>{fmt(Math.floor(st.count))} / {fmt(st.bought)}</b></div>
-        <div className="kv"><span>each pays, per cycle</span><b><span className="tcol">{fmt(unitValue(state, i))}</span> → {targetName}</b></div>
+        <div className="kv"><span>each pays, per cycle</span><b><span className="tcol">{fmtVal(unitValue(state, i))}</span> → {targetName}</b></div>
         <div className="kv"><span>cycle</span><b>{period(state, i) < 0.3 ? "continuous" : `${period(state, i).toFixed(2)}s`}</b></div>
         <div className="kv"><span>×{scenDef.milestoneMult} at {fmt(nextAt)} bought</span><b>now ×{fmt(Math.pow(scenDef.milestoneMult, lvl))}</b></div>
         <div className="mbar"><div className="mfill" style={{ width: `${Math.round(prg * 100)}%` }} /></div>

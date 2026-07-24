@@ -16,6 +16,14 @@ export function fmt(n: number): string {
   return n.toExponential(2).replace("+", "");
 }
 
+/** Exact small values: 1.75 shows as 1.75, never floored to 1. */
+export function fmtVal(n: number): string {
+  if (!isFinite(n)) return "∞";
+  if (n >= 1e6) return fmt(n);
+  if (Number.isInteger(n)) return n.toLocaleString("en-US");
+  return n.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 export function fmtRate(n: number): string {
   if (!isFinite(n)) return "∞";
   if (n > 0 && n < 1) return n.toFixed(2).replace(/0$/, "");
