@@ -58,9 +58,13 @@ export function amountLabel(a: BuyAmount): string {
   return `×${a}`;
 }
 
-/** Short form for the row plate, where the label shares 132px with a count. */
-export function amountShort(a: BuyAmount): string {
+/**
+ * Short form for the row plate, where the label shares 132px with a count.
+ * On a tier holding nothing the milestone step IS the unlock, so it says so —
+ * calling it "milestone" there would name the wrong goal.
+ */
+export function amountShort(a: BuyAmount, unlocking = false): string {
   if (a === "max") return "max";
-  if (a === "milestone") return "milestone";
+  if (a === "milestone") return unlocking ? "unlock" : "milestone";
   return `×${a}`;
 }

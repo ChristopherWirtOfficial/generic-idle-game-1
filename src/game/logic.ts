@@ -61,10 +61,21 @@ export function milestoneProgress(s: GameState, i: number): number {
   return Math.max(0, Math.min(1, (st.bought - prev) / span));
 }
 
-/** Units still needed to cross the next milestone (never less than 1). */
+/**
+ * True when this tier holds nothing, so the next threshold that means anything
+ * is the first unit. You cannot aim at a hand-bought milestone on a tier you
+ * have not opened yet.
+ */
+export function needsUnlock(s: GameState, i: number): boolean {
+  const st = s.tiers[i];
+  return !st || Math.floor(st.count) < 1;
+}
+
+/** Units still needed to cross the next threshold (never less than 1). */
 export function toMilestone(s: GameState, i: number): number {
   const st = s.tiers[i];
   if (!st) return 1;
+  if (needsUnlock(s, i)) return 1;
   return Math.max(1, nextMilestoneAt(s, i) - st.bought);
 }
 
@@ -77,6 +88,16 @@ export function amountCount(s: GameState, i: number, a: BuyAmount): number {
   if (a === "max") return Math.max(1, maxAffordable(s, i));
   if (a === "milestone") return toMilestone(s, i);
   return a;
+}
+
+/**
+ * What this quantity would ACTUALLY buy right now, for display. Differs from
+ * amountCount only for max, which is honestly 0 when you can afford none —
+ * amountCount clamps to 1 so the plate can still price the thing you want.
+ */
+export function amountShown(s: GameState, i: number, a: BuyAmount): number {
+  if (a === "max") return maxAffordable(s, i);
+  return amountCount(s, i, a);
 }
 
 /** Value paid per unit per cycle, all multipliers in. */

@@ -97,6 +97,10 @@ const qs = $$(".row.open .q");
 check("bloom shows four quantities", qs.length === 4, `${qs.length}`);
 check("each quantity shows count and cost", qs.every((q) => q.querySelector(".n") && q.querySelector(".amt")));
 check("bloom marks the selected quantity", $(".row.open .q.mode") !== null);
+// max must state its real count, including zero — a bare "max" on a button
+// that can buy nothing reads as affordable.
+const maxCell = qs.find((q) => q.querySelector(".lab")?.textContent === "max");
+check("max states a count", /^\+\d/.test(maxCell?.querySelector(".n")?.textContent ?? ""), maxCell?.querySelector(".n")?.textContent);
 check("bloom shows hand-bought progress", byText(".row.open .ms", "by hand")?.textContent.includes("31"), byText(".row.open .ms", "by hand")?.textContent);
 check("bloom shows stat chips", $$(".row.open .chip").length === 3, `${$$(".row.open .chip").length}`);
 check("bloom reveals cycle time", $(".row.open .cyc")?.textContent.includes("s"), $(".row.open .cyc")?.textContent);
@@ -105,6 +109,11 @@ check("bloom reveals cycle time", $(".row.open .cyc")?.textContent.includes("s")
 byText(".seg button", "next milestone").click();
 await sleep(200);
 check("next milestone prices the gap to the milestone", document.querySelector('[aria-label="buy 44 tier 1"]') !== null);
+// Tier 2 is seeded unowned: you cannot aim at a hand-bought milestone on a
+// tier you have not opened, so the step collapses to the unlock itself.
+const lockedPlate = document.querySelector('[aria-label="buy 1 tier 2"]');
+check("unowned tier's milestone step is the unlock", lockedPlate !== null);
+check("unowned tier's plate says unlock, not milestone", lockedPlate?.querySelector(".lab")?.textContent === "unlock", lockedPlate?.querySelector(".lab")?.textContent);
 byText(".seg button", "×1").click();
 await sleep(150);
 heads[heads.length - 1].click();

@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { GLOW_PERIOD_S, TIER_HUES } from "../game/constants";
 import {
-  amountCount, milestoneLevel, milestoneProgress, nextMilestoneAt, period, scen, tableauLevels, tableauMult,
-  throughput, tierCost, tierKnown, unitValue, visibleTiers,
+  amountCount, amountShown, milestoneLevel, milestoneProgress, needsUnlock, nextMilestoneAt, period, scen,
+  tableauLevels, tableauMult, throughput, tierCost, tierKnown, unitValue, visibleTiers,
 } from "../game/logic";
 import { fmt, fmtRate, fmtVal } from "../game/format";
 import { STAT_NAME, StatGlyph, amountShort } from "./vocab";
@@ -30,6 +30,17 @@ interface Props {
 
 /** Exported: the flatten pipeline shares one scope, so this name lives here only. */
 export const AMOUNTS: BuyAmount[] = [1, 10, "max", "milestone"];
+
+/**
+ * ×1 and ×10 state their own count, so only max and milestone append one.
+ * max always shows it, INCLUDING +0 — "max" with no number silently looked
+ * like a working button when it could buy nothing.
+ */
+function countSuffix(s: GameState, i: number, a: BuyAmount, unlocking: boolean): string {
+  if (a === "max") return ` +${fmt(amountShown(s, i, a))}`;
+  if (a === "milestone" && !unlocking) return ` +${fmt(amountShown(s, i, a))}`;
+  return "";
+}
 
 /**
  * Two concentric arcs on one hub. The inner arc is the cycle — owned by the rAF
@@ -121,6 +132,7 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
     const dead = def.baseValue <= 0;
 
     // The resting plate prices the globally-selected quantity for THIS tier.
+    const unlocking = needsUnlock(state, i);
     const n = amountCount(state, i, amount);
     const cost = tierCost(state, i, n);
     const can = state.score >= cost;
@@ -171,7 +183,7 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
           aria-label={`buy ${n} tier ${i + 1}`}
         >
           <span className="fill" style={{ width: `${fill * 100}%` }} />
-          <span className="lab">{amountShort(amount)}{n > 1 ? ` +${fmt(n)}` : ""}</span>
+          <span className="lab">{amountShort(amount, unlocking)}{countSuffix(state, i, amount, unlocking)}</span>
           <span className="amt">{fmt(cost)}</span>
         </button>
 
@@ -193,8 +205,8 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
                       aria-label={`buy ${qn} tier ${i + 1}`}
                     >
                       <span className="fill" style={{ width: `${qfill * 100}%` }} />
-                      <span className="lab">{amountShort(a)}</span>
-                      <span className="n">+{fmt(qn)}</span>
+                      <span className="lab">{amountShort(a, unlocking)}</span>
+                      <span className="n">+{fmt(amountShown(state, i, a))}</span>
                       <span className="amt">{fmt(qc)}</span>
                     </button>
                   );
