@@ -1,168 +1,320 @@
 import {
-  ACHIEVEMENTS, ACH_MULT_EACH, CRUNCH_LOG_START, CRUNCH_LOG_RATE, MILESTONE_FIRST,
-  MILESTONE_MULT, DUST_CLAMP, SINGULARITY_MULT_EACH, TIERS, UPGRADES,
+  BASE_DRAW, EXOTIC_CHANCE, GLOW_PERIOD_S, THRESH_A, THRESH_B, HOTSTART_BONUS, LEVEL_POTENCY, NUM_CLAMP,
+  RARITY_LEVELS, RARITY_WEIGHT, scenarioById,
 } from "./constants";
-import type { GameState } from "./types";
+import type { Card, DrawOffer, GameState, ScenarioDef, ScenarioProgress, Stat, TierState } from "./types";
 
-const upgradeById = new Map(UPGRADES.map((u) => [u.id, u]));
-
-export function achMult(s: GameState): number {
-  return 1 + s.achievements.length * ACH_MULT_EACH;
+export function scen(s: GameState): ScenarioDef {
+  return scenarioById(s.scenario);
 }
 
-export function singularityMult(s: GameState): number {
-  return 1 + s.singularities * SINGULARITY_MULT_EACH;
+export function prog(s: GameState): ScenarioProgress {
+  let p = s.progress[s.scenario];
+  if (!p) {
+    p = {
+      tableau: {}, hotstart: 0, flywheel: false,
+      resets: 0, picks: 0, bestRun: 0, totalScore: 0, beaten: false,
+      everBought: scen(s).tiers.map(() => 0),
+    };
+    s.progress[s.scenario] = p;
+  }
+  return p;
 }
 
-/** Level L is reached at MILESTONE_FIRST * (2^L - 1) bought: 25, 75, 175, 375... */
+export function tableauLevels(s: GameState, tier: number, stat: Stat): number {
+  return prog(s).tableau[tier]?.[stat] ?? 0;
+}
+
+/** Additive levels: each level adds the same absolute chunk, forever. */
+export function tableauMult(s: GameState, tier: number, stat: Stat): number {
+  return 1 + LEVEL_POTENCY * tableauLevels(s, tier, stat);
+}
+
+/** Milestone level with doubling spans: level L at first*(2^L - 1) bought. */
 export function milestoneLevel(s: GameState, i: number): number {
+  const first = scen(s).milestoneFirst;
   const bought = s.tiers[i]?.bought ?? 0;
-  return Math.max(0, Math.floor(Math.log2(bought / MILESTONE_FIRST + 1)));
+  return Math.max(0, Math.floor(Math.log2(bought / first + 1)));
 }
 
-/** Bought count needed for the next milestone level. */
 export function nextMilestoneAt(s: GameState, i: number): number {
-  return MILESTONE_FIRST * (Math.pow(2, milestoneLevel(s, i) + 1) - 1);
+  return scen(s).milestoneFirst * (Math.pow(2, milestoneLevel(s, i) + 1) - 1);
 }
 
-/** Multiplier applied to tier i's output (before dust-only bonuses). */
-export function tierMult(s: GameState, i: number): number {
-  let m = Math.pow(MILESTONE_MULT, milestoneLevel(s, i));
-  for (const id of s.upgrades) {
-    const u = upgradeById.get(id);
-    if (!u || u.kind) continue;
-    if (u.target === i || u.target === "global") m *= u.mult;
-  }
-  return m;
+/** Value paid per unit per cycle, all multipliers in. */
+export function unitValue(s: GameState, i: number): number {
+  const def = scen(s).tiers[i];
+  if (!def) return 0;
+  return def.baseValue
+    * def.efficiency
+    * Math.pow(scen(s).milestoneMult, milestoneLevel(s, i))
+    * tableauMult(s, i, "val");
 }
 
-/** Rate at which tier i emits its product (units/sec), all bonuses included. */
-export function tierOutput(s: GameState, i: number): number {
-  const def = TIERS[i];
+/** Effective seconds per cycle. Speed divides the period — no floor, ever. */
+export function period(s: GameState, i: number): number {
+  const def = scen(s).tiers[i];
+  if (!def) return Infinity;
+  return def.basePeriod / tableauMult(s, i, "spd");
+}
+
+/** Average output per second (used for display and the offline trickle). */
+export function throughput(s: GameState, i: number): number {
   const st = s.tiers[i];
-  if (!def || !st) return 0;
-  let out = st.count * def.baseRate * tierMult(s, i);
-  if (i === 0) out *= achMult(s) * singularityMult(s);
-  return out;
+  if (!st || st.count < 1) return 0;
+  return (Math.floor(st.count) * unitValue(s, i)) / period(s, i);
 }
 
-export function dustPerSecond(s: GameState): number {
-  return tierOutput(s, 0);
-}
-
-export function pressValue(s: GameState): number {
-  let v = 1;
-  let pct = 0;
-  for (const id of s.upgrades) {
-    const u = upgradeById.get(id);
-    if (!u || u.target !== "press") continue;
-    if (u.kind === "pressPercent") pct += 0.02;
-    else if (!u.kind) v *= u.mult;
-  }
-  v *= achMult(s) * singularityMult(s);
-  return v + pct * dustPerSecond(s);
-}
-
-export function hasAutoPress(s: GameState): boolean {
-  return s.upgrades.includes("u-autopress");
-}
-
-export function press(s: GameState): number {
-  const v = pressValue(s);
-  s.dust += v; s.lifetimeDust += v; s.runDust += v;
-  s.presses += 1;
-  return v;
+/** Score per second from tier 0, averaged over its cycle. */
+export function scoreRate(s: GameState): number {
+  const def = scen(s).tiers[0];
+  return def && def.target === -1 ? throughput(s, 0) : 0;
 }
 
 export function tierCost(s: GameState, i: number, n = 1): number {
-  const def = TIERS[i];
+  const def = scen(s).tiers[i];
   const st = s.tiers[i];
   if (!def || !st || n <= 0) return Infinity;
   const g = def.costGrowth;
-  const first = def.baseCost * Math.pow(g, st.bought);
-  return first * (Math.pow(g, n) - 1) / (g - 1);
+  const first = (def.baseCost / tableauMult(s, i, "cst")) * Math.pow(g, st.bought);
+  return (first * (Math.pow(g, n) - 1)) / (g - 1);
 }
 
 export function maxAffordable(s: GameState, i: number): number {
-  const def = TIERS[i];
+  const def = scen(s).tiers[i];
   const st = s.tiers[i];
   if (!def || !st) return 0;
   const g = def.costGrowth;
-  const first = def.baseCost * Math.pow(g, st.bought);
-  if (s.dust < first) return 0;
-  return Math.floor(Math.log(s.dust * (g - 1) / first + 1) / Math.log(g));
+  const first = (def.baseCost / tableauMult(s, i, "cst")) * Math.pow(g, st.bought);
+  if (s.score < first) return 0;
+  return Math.floor(Math.log((s.score * (g - 1)) / first + 1) / Math.log(g));
 }
 
 export function buyTier(s: GameState, i: number, n: number): boolean {
   const st = s.tiers[i];
   if (!st) return false;
   const cost = tierCost(s, i, n);
-  if (n <= 0 || !Number.isFinite(cost) || s.dust < cost) return false;
-  s.dust -= cost;
+  if (n <= 0 || !Number.isFinite(cost) || s.score < cost) return false;
+  const lvlBefore = milestoneLevel(s, i);
+  s.score -= cost;
   st.count += n;
   st.bought += n;
+  noteMilestones(s, i, lvlBefore);
+  const p = prog(s);
+  const ever = p.everBought[i] ?? 0;
+  if (st.bought > ever) p.everBought[i] = st.bought;
+  // Sculpting: engaging the price curve writes cost-card weight.
+  addPool(s, i, "cst", n);
   return true;
 }
 
-export function buyUpgrade(s: GameState, id: string): boolean {
-  const u = upgradeById.get(id);
-  if (!u || s.upgrades.includes(id) || s.dust < u.cost) return false;
-  s.dust -= u.cost;
-  s.upgrades.push(id);
-  return true;
+export function addPool(s: GameState, tier: number, stat: Stat, w: number): void {
+  const row = (s.pool[tier] ??= { val: 0, spd: 0, cst: 0 });
+  row[stat] += w;
 }
 
-/** Highest tier index the player has ever been able to see (owned, or next after highest owned). */
-export function visibleTiers(s: GameState): number {
-  let highest = -1;
-  for (let i = TIERS.length - 1; i >= 0; i--) {
-    const st = s.tiers[i];
-    if (st && (st.count > 0 || st.bought > 0)) { highest = i; break; }
-  }
-  return Math.min(TIERS.length, highest + 2);
-}
-
-export function pendingSingularities(s: GameState): number {
-  const lg = s.lifetimeDust > 0 ? Math.log10(s.lifetimeDust) : 0;
-  const total = Math.max(0, Math.floor((lg - CRUNCH_LOG_START) * CRUNCH_LOG_RATE));
-  return Math.max(0, total - s.singularities);
-}
-
-export function doCrunch(s: GameState): number {
-  const gain = pendingSingularities(s);
-  if (gain <= 0) return 0;
-  s.singularities += gain;
-  s.crunches += 1;
-  s.dust = 0;
-  s.runDust = 0;
-  s.tiers = TIERS.map(() => ({ count: 0, bought: 0 }));
-  s.upgrades = [];
-  return gain;
-}
-
-export function checkAchievements(s: GameState): string[] {
-  const fresh: string[] = [];
-  for (const a of ACHIEVEMENTS) {
-    if (!s.achievements.includes(a.id) && a.check(s)) {
-      s.achievements.push(a.id);
-      fresh.push(a.id);
-    }
-  }
-  return fresh;
-}
-
-/** Advance the simulation. Cascades top-down: units formed this step start producing this step. */
+/**
+ * Advance all wheels. One formula for both regimes: progress accrues as dt/period;
+ * whole completions pay out count × unitValue into the target; the fraction stays
+ * as phase. Payout uses the count held at completion.
+ */
 export function step(s: GameState, dtSec: number): void {
   if (dtSec <= 0) return;
-  for (let i = TIERS.length - 1; i >= 1; i--) {
-    const below = s.tiers[i - 1];
-    if (!below) continue;
-    below.count += tierOutput(s, i) * dtSec;
+  const defs = scen(s).tiers;
+  for (let i = defs.length - 1; i >= 0; i--) {
+    const st = s.tiers[i];
+    const def = defs[i];
+    if (!st || !def) continue;
+    const T = period(s, i);
+    const adv = dtSec / T;
+    const total = st.phase + adv;
+    const completions = Math.floor(total);
+    st.phase = total - completions;
+    if (completions <= 0) continue;
+    const held = Math.floor(st.count);
+    if (held < 1) { continue; }
+    st.cycles += completions;
+    // Sculpting: watching a wheel turn writes speed weight — but only while it is
+    // still a wheel. Once it graduates to glow, the spigot closes itself.
+    if (T >= GLOW_PERIOD_S) addPool(s, i, "spd", completions * 0.5);
+    const pay = held * unitValue(s, i) * completions;
+    deposit(s, def.target, pay);
   }
-  const gained = dustPerSecond(s) * dtSec;
-  s.dust += gained; s.lifetimeDust += gained; s.runDust += gained;
-  if (!Number.isFinite(s.dust) || s.dust > DUST_CLAMP) s.dust = DUST_CLAMP;
-  if (!Number.isFinite(s.lifetimeDust) || s.lifetimeDust > DUST_CLAMP) s.lifetimeDust = DUST_CLAMP;
-  if (!Number.isFinite(s.runDust) || s.runDust > DUST_CLAMP) s.runDust = DUST_CLAMP;
-  for (const st of s.tiers) if (!Number.isFinite(st.count) || st.count > DUST_CLAMP) st.count = DUST_CLAMP;
+  clampState(s);
+}
+
+function deposit(s: GameState, target: number, amount: number): void {
+  if (amount <= 0) return;
+  if (target < 0) {
+    s.score += amount;
+    s.runScore += amount;
+    const p = prog(s);
+    p.totalScore += amount;
+    if (s.runScore > p.bestRun) p.bestRun = s.runScore;
+    if (s.runScore >= scen(s).goal) p.beaten = true;
+  } else {
+    const st = s.tiers[target];
+    if (st) st.count += amount;
+  }
+}
+
+export function clampState(s: GameState): void {
+  if (!Number.isFinite(s.score) || s.score > NUM_CLAMP) s.score = NUM_CLAMP;
+  if (!Number.isFinite(s.runScore) || s.runScore > NUM_CLAMP) s.runScore = NUM_CLAMP;
+  for (const st of s.tiers) {
+    if (!Number.isFinite(st.count) || st.count > NUM_CLAMP) st.count = NUM_CLAMP;
+  }
+}
+
+/** Milestone crossings write value-card weight. */
+function noteMilestones(s: GameState, i: number, before: number): void {
+  const after = milestoneLevel(s, i);
+  if (after > before) addPool(s, i, "val", (after - before) * 20);
+}
+
+/** The ladder rises as the tableau grows, so run length stays a live choice. */
+export function threshScale(s: GameState): number {
+  return Math.pow(1 + THRESH_A * prog(s).picks, THRESH_B);
+}
+
+export function pickThresholds(s: GameState): [number, number, number] {
+  const f = threshScale(s);
+  const [a, b, c] = scen(s).pickAt;
+  return [a * f, b * f, c * f];
+}
+
+export function picksFor(s: GameState, runScore: number): number {
+  const [a, b, c] = pickThresholds(s);
+  if (runScore >= c) return 3;
+  if (runScore >= b) return 2;
+  if (runScore >= a) return 1;
+  return 0;
+}
+
+/** One-shot: every held unit fires once, cascading top-down into the score. */
+export function liquidationValue(s: GameState): number {
+  const defs = scen(s).tiers;
+  const virtual = s.tiers.map((t) => Math.floor(t.count));
+  let gained = 0;
+  for (let i = defs.length - 1; i >= 0; i--) {
+    const def = defs[i];
+    const held = virtual[i] ?? 0;
+    if (!def || held < 1) continue;
+    const pay = held * unitValue(s, i);
+    if (def.target < 0) gained += pay;
+    else virtual[def.target] = (virtual[def.target] ?? 0) + pay;
+  }
+  return gained;
+}
+
+/** Visible tiers: one past the deepest ever bought in this scenario. */
+export function visibleTiers(s: GameState): number {
+  const p = prog(s);
+  let deepest = -1;
+  for (let i = p.everBought.length - 1; i >= 0; i--) {
+    if ((p.everBought[i] ?? 0) > 0 || (s.tiers[i]?.bought ?? 0) > 0) { deepest = i; break; }
+  }
+  return Math.min(scen(s).tiers.length, deepest + 2);
+}
+
+// ---------- Draws ----------
+
+export function poolEntries(s: GameState): Array<{ tier: number; stat: Stat; w: number }> {
+  const out: Array<{ tier: number; stat: Stat; w: number }> = [];
+  for (const [tierStr, row] of Object.entries(s.pool)) {
+    const tier = Number(tierStr);
+    for (const stat of ["val", "spd", "cst"] as const) {
+      if (row[stat] > 0) out.push({ tier, stat, w: row[stat] });
+    }
+  }
+  return out;
+}
+
+export function rollDraw(s: GameState, rand: () => number): DrawOffer {
+  const liquidated = liquidationValue(s);
+  const finalRun = Math.min(NUM_CLAMP, s.runScore + liquidated);
+  const picks = picksFor(s, finalRun);
+  const nCards = BASE_DRAW + s.bankedDraws;
+  const entries = poolEntries(s);
+  const cards: Card[] = [];
+  const p = prog(s);
+  for (let k = 0; k < nCards; k++) {
+    if (rand() < EXOTIC_CHANCE && cards.every((c) => c.kind === "stat")) {
+      if (!p.flywheel && rand() < 0.5) {
+        cards.push({ kind: "flywheel", tier: -1, stat: null, levels: 1, rarity: 2 });
+        continue;
+      }
+      cards.push({ kind: "hotstart", tier: -1, stat: null, levels: HOTSTART_BONUS, rarity: 1 });
+      continue;
+    }
+    const totalW = entries.reduce((a, e) => a + e.w, 0);
+    if (totalW <= 0 || entries.length === 0) {
+      cards.push({ kind: "stat", tier: 0, stat: "val", levels: RARITY_LEVELS[0], rarity: 0 });
+      continue;
+    }
+    let roll = rand() * totalW;
+    let chosen = entries[0]!;
+    for (const e of entries) { roll -= e.w; if (roll <= 0) { chosen = e; break; } }
+    const rr = rand();
+    const rarity: 0 | 1 | 2 = rr < RARITY_WEIGHT[2] ? 2 : rr < RARITY_WEIGHT[2] + RARITY_WEIGHT[1] ? 1 : 0;
+    cards.push({ kind: "stat", tier: chosen.tier, stat: chosen.stat, levels: RARITY_LEVELS[rarity], rarity });
+  }
+  return { cards, picks, liquidated };
+}
+
+export function applyPick(s: GameState, card: Card): void {
+  const p = prog(s);
+  p.picks += 1;
+  if (card.kind === "flywheel") { p.flywheel = true; return; }
+  if (card.kind === "hotstart") { p.hotstart += card.levels; return; }
+  if (card.tier < 0 || !card.stat) return;
+  const row = (p.tableau[card.tier] ??= { val: 0, spd: 0, cst: 0 });
+  row[card.stat] += card.levels;
+}
+
+/** Reset the run: destroys stock, bought, run pool. Phase survives. */
+export function doReset(s: GameState, now = Date.now()): void {
+  const p = prog(s);
+  p.resets += 1;
+  const defs = scen(s).tiers;
+  s.tiers = s.tiers.map((t): TierState => ({ count: 0, bought: 0, phase: t.phase, cycles: 0 }));
+  while (s.tiers.length < defs.length) s.tiers.push({ count: 0, bought: 0, phase: 0, cycles: 0 });
+  s.runScore = 0;
+  s.score = startingScore(s);
+  s.pool = {};
+  s.bankedDraws = 0;
+  s.runStartedAt = now;
+  if (p.hotstart > 0) {
+    const t0 = s.tiers[0];
+    if (t0) { t0.count += p.hotstart; t0.bought += p.hotstart; }
+  }
+  if (p.flywheel) {
+    for (let i = 0; i < defs.length; i++) {
+      const st = s.tiers[i];
+      if (st) st.phase = 0.999;
+    }
+  }
+}
+
+/** Every run starts able to afford exactly one tier 1. */
+export function startingScore(s: GameState): number {
+  const def = scen(s).tiers[0];
+  if (!def) return 10;
+  return def.baseCost / tableauMult(s, 0, "cst");
+}
+
+export function switchScenario(s: GameState, id: string, now = Date.now()): void {
+  s.scenario = id;
+  const defs = scen(s).tiers;
+  s.tiers = defs.map(() => ({ count: 0, bought: 0, phase: 0, cycles: 0 }));
+  s.runScore = 0;
+  s.pool = {};
+  s.bankedDraws = 0;
+  s.runStartedAt = now;
+  prog(s); // materialize
+  s.score = startingScore(s);
+  if (prog(s).hotstart > 0) {
+    const t0 = s.tiers[0];
+    if (t0) { t0.count += prog(s).hotstart; t0.bought += prog(s).hotstart; }
+  }
 }

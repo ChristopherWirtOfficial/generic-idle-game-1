@@ -1,67 +1,102 @@
-import type { TierDef, UpgradeDef, AchievementDef } from "./types";
+import type { ScenarioDef, TierDef } from "./types";
 
-export const SAVE_KEY = "gig1:save2";
+export const SAVE_KEY = "gig1:save3";
 export const TICK_MS = 100;
 export const SAVE_INTERVAL_MS = 20_000;
-export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
 export const OFFLINE_MIN_MS = 60_000;
-export const OFFLINE_SIM_STEPS = 900;
+/** Every BANK_MS away banks one bonus draw option, up to BANK_CAP. */
+export const BANK_MS = 20 * 60_000;
+export const BANK_CAP = 6;
+/** Offline trickle: this many seconds of tier-1 output, credited on return. */
+export const TRICKLE_S = 60;
 
-/** First milestone at N bought; each next level needs double the previous span (25, 50, 100...). */
-export const MILESTONE_FIRST = 25;
-export const MILESTONE_MULT = 2;
-export const ACH_MULT_EACH = 0.05;
-export const SINGULARITY_MULT_EACH = 0.15;
-/** Total singularities = floor((log10(lifetime) - CRUNCH_LOG_START) * CRUNCH_LOG_RATE) */
-export const CRUNCH_LOG_START = 12;
-export const CRUNCH_LOG_RATE = 2.5;
+export const BASE_DRAW = 3;
+/** Pick thresholds rise with picks taken: threshold × (1 + a·P)^b. */
+export const THRESH_A = 0.12;
+export const THRESH_B = 2;
+export const RARITY_LEVELS = [1, 2, 4] as const;
+export const LEVEL_POTENCY = 0.75;
+export const RARITY_WEIGHT = [0.7, 0.25, 0.05] as const;
+export const EXOTIC_CHANCE = 0.06;
+export const HOTSTART_BONUS = 5;
 
-export const TIERS: TierDef[] = [
-  { id: "mote",    name: "Mote",    plural: "Motes",    blurb: "Gathers stardust.",            baseCost: 15,     costGrowth: 1.15, baseRate: 0.6,   hue: 42 },
-  { id: "comet",   name: "Comet",   plural: "Comets",   blurb: "Sheds a trail of Motes.",      baseCost: 2500,   costGrowth: 1.17, baseRate: 0.05,  hue: 190 },
-  { id: "moon",    name: "Moon",    plural: "Moons",    blurb: "Pulls Comets into orbit.",     baseCost: 5e5,    costGrowth: 1.19, baseRate: 0.035,  hue: 220 },
-  { id: "planet",  name: "Planet",  plural: "Planets",  blurb: "Gathers Moons around itself.", baseCost: 2.5e8,    costGrowth: 1.22, baseRate: 0.025,  hue: 150 },
-  { id: "star",    name: "Star",    plural: "Stars",    blurb: "Forges Planets in its disk.",  baseCost: 4e11, costGrowth: 1.25, baseRate: 0.016, hue: 48 },
-  { id: "nebula",  name: "Nebula",  plural: "Nebulae",  blurb: "Condenses newborn Stars.",     baseCost: 2e15, costGrowth: 1.28, baseRate: 0.01, hue: 300 },
-  { id: "galaxy",  name: "Galaxy",  plural: "Galaxies", blurb: "Spins up Nebulae.",            baseCost: 2e21,   costGrowth: 1.35, baseRate: 0.005, hue: 262 },
-  { id: "cluster", name: "Cluster", plural: "Clusters", blurb: "Binds Galaxies by gravity.",   baseCost: 1e26, costGrowth: 1.42,  baseRate: 0.003,  hue: 350 },
+/** Renderer-only threshold: below this period a wheel draws as glow. Never in the economy. */
+export const GLOW_PERIOD_S = 0.3;
+
+export const NUM_CLAMP = 1e300;
+
+function chain(specs: Array<Partial<TierDef> & { basePeriod: number; baseCost: number; costGrowth: number }>): TierDef[] {
+  return specs.map((s, i) => ({
+    basePeriod: s.basePeriod,
+    baseValue: s.baseValue ?? 1,
+    baseCost: s.baseCost,
+    costGrowth: s.costGrowth,
+    target: s.target ?? i - 1,
+    efficiency: s.efficiency ?? 1,
+  }));
+}
+
+const BASELINE_TIERS = chain([
+  { basePeriod: 5,   baseCost: 10,    costGrowth: 1.1 },
+  { basePeriod: 10,  baseCost: 1.5e2, costGrowth: 1.13 },
+  { basePeriod: 20,  baseCost: 1.5e4, costGrowth: 1.16 },
+  { basePeriod: 40,  baseCost: 1.2e6, costGrowth: 1.19 },
+  { basePeriod: 80,  baseCost: 3e8,   costGrowth: 1.22 },
+  { basePeriod: 160, baseCost: 2e11,  costGrowth: 1.26 },
+  { basePeriod: 320, baseCost: 3e14,  costGrowth: 1.31 },
+  { basePeriod: 640, baseCost: 1e18,  costGrowth: 1.37 },
+]);
+
+export const SCENARIOS: ScenarioDef[] = [
+  {
+    id: "s1", name: "1", diff: "the constitution as written",
+    tiers: BASELINE_TIERS,
+    goal: 1e15,
+    pickAt: [2e4, 2e7, 2e10],
+    milestoneFirst: 25, milestoneMult: 2,
+  },
+  {
+    id: "s2", name: "2", diff: "4 tiers · growth +0.05 each · spans start 50",
+    tiers: chain([
+      { basePeriod: 5,  baseCost: 10,    costGrowth: 1.15 },
+      { basePeriod: 10, baseCost: 1.5e2, costGrowth: 1.18 },
+      { basePeriod: 20, baseCost: 1.5e4, costGrowth: 1.21 },
+      { basePeriod: 40, baseCost: 1.2e6, costGrowth: 1.24 },
+    ]),
+    goal: 1e12,
+    pickAt: [2e4, 2e7, 2e10],
+    milestoneFirst: 50, milestoneMult: 2,
+  },
+  {
+    id: "s3", name: "3", diff: "milestones ×3 · spans start 75 · costs ×10",
+    tiers: BASELINE_TIERS.map((t) => ({ ...t, baseCost: t.baseCost * 10 })),
+    goal: 1e15,
+    pickAt: [2e5, 2e8, 2e11],
+    milestoneFirst: 75, milestoneMult: 3,
+  },
+  {
+    id: "s4", name: "4", diff: "tier 4 is dead · 5 pays 3 at half rate",
+    tiers: BASELINE_TIERS.map((t, i) => {
+      if (i === 3) return { ...t, baseValue: 0 };
+      if (i === 4) return { ...t, target: 2, efficiency: 0.5 };
+      return t;
+    }),
+    goal: 1e15,
+    pickAt: [2e4, 2e7, 2e10],
+    milestoneFirst: 25, milestoneMult: 2,
+  },
+  {
+    id: "s5", name: "5", diff: "periods ÷4 · growth +0.06 each",
+    tiers: BASELINE_TIERS.map((t) => ({ ...t, basePeriod: t.basePeriod / 4, costGrowth: t.costGrowth + 0.06 })),
+    goal: 1e15,
+    pickAt: [2e4, 2e7, 2e10],
+    milestoneFirst: 25, milestoneMult: 2,
+  },
 ];
 
-export const UPGRADES: UpgradeDef[] = [
-  { id: "u-press2",   name: "Firmer Press",      blurb: "Condensing yields ×3 dust.",                cost: 250,    target: "press", mult: 3 },
-  { id: "u-mote2",    name: "Sticky Dust",       blurb: "Motes gather ×2 dust.",                     cost: 700,    target: 0, mult: 2 },
-  { id: "u-mote3",    name: "Static Charge",     blurb: "Motes gather ×2 dust.",                     cost: 6_000,  target: 0, mult: 2 },
-  { id: "u-presspct", name: "Gravity Assist",    blurb: "Condensing also yields 2% of dust/sec.",    cost: 2e4, target: "press", mult: 1, kind: "pressPercent" },
-  { id: "u-comet2",   name: "Longer Tails",      blurb: "Comets shed ×2 Motes.",                     cost: 9e4, target: 1, mult: 2 },
-  { id: "u-mote4",    name: "Dust Magnetism",    blurb: "Motes gather ×3 dust.",                     cost: 4e5,  target: 0, mult: 3 },
-  { id: "u-global1",  name: "Thin Vacuum",       blurb: "Everything produces ×2.",                   cost: 3.5e6,    target: "global", mult: 2 },
-  { id: "u-moon2",    name: "Tidal Lock",        blurb: "Moons pull ×2 Comets.",                     cost: 2.5e7,    target: 2, mult: 2 },
-  { id: "u-comet3",   name: "Ice Cores",         blurb: "Comets shed ×3 Motes.",                     cost: 1.2e8,    target: 1, mult: 3 },
-  { id: "u-planet2",  name: "Ring Systems",      blurb: "Planets gather ×2 Moons.",                  cost: 5e9,  target: 3, mult: 2 },
-  { id: "u-global2",  name: "Cold Dark Matter",  blurb: "Everything produces ×2.",                   cost: 9e10,   target: "global", mult: 2 },
-  { id: "u-star2",    name: "Heavy Elements",    blurb: "Stars forge ×2 Planets.",                   cost: 4e12,   target: 4, mult: 2 },
-  { id: "u-autopress",name: "Standing Wave",     blurb: "The sky condenses itself once per second.", cost: 2e13,   target: "press", mult: 1, kind: "autoPress" },
-  { id: "u-nebula2",  name: "Shockfronts",       blurb: "Nebulae condense ×2 Stars.",                cost: 4e15,   target: 5, mult: 2 },
-  { id: "u-global3",  name: "Inflation Echo",    blurb: "Everything produces ×3.",                   cost: 1e17,   target: "global", mult: 2 },
-  { id: "u-galaxy2",  name: "Spiral Arms",       blurb: "Galaxies spin ×2 Nebulae.",                 cost: 6e21,   target: 6, mult: 2 },
-  { id: "u-cluster2", name: "Filaments",         blurb: "Clusters bind ×2 Galaxies.",                cost: 4e26,   target: 7, mult: 2 },
-  { id: "u-global4",  name: "Deep Field",        blurb: "Everything produces ×3.",                   cost: 1e28,   target: "global", mult: 2 },
-];
+export function scenarioById(id: string): ScenarioDef {
+  return SCENARIOS.find((s) => s.id === id) ?? SCENARIOS[0]!;
+}
 
-export const ACHIEVEMENTS: AchievementDef[] = [
-  { id: "a-press",   name: "First Light",        blurb: "Condense the void once.",        check: (s) => s.presses >= 1 },
-  { id: "a-mote",    name: "It Moves",           blurb: "Own a Mote.",                    check: (s) => (s.tiers[0]?.count ?? 0) >= 1 },
-  { id: "a-comet",   name: "Dirty Snowball",     blurb: "Own a Comet.",                   check: (s) => (s.tiers[1]?.count ?? 0) >= 1 },
-  { id: "a-moon",    name: "A Moon of Your Own", blurb: "Own a Moon.",                    check: (s) => (s.tiers[2]?.count ?? 0) >= 1 },
-  { id: "a-planet",  name: "Pale Dot",           blurb: "Own a Planet.",                  check: (s) => (s.tiers[3]?.count ?? 0) >= 1 },
-  { id: "a-star",    name: "Ignition",           blurb: "Own a Star.",                    check: (s) => (s.tiers[4]?.count ?? 0) >= 1 },
-  { id: "a-nebula",  name: "Stellar Nursery",    blurb: "Own a Nebula.",                  check: (s) => (s.tiers[5]?.count ?? 0) >= 1 },
-  { id: "a-galaxy",  name: "Grand Design",       blurb: "Own a Galaxy.",                  check: (s) => (s.tiers[6]?.count ?? 0) >= 1 },
-  { id: "a-cluster", name: "Large Scale",        blurb: "Own a Cluster.",                 check: (s) => (s.tiers[7]?.count ?? 0) >= 1 },
-  { id: "a-dust6",   name: "Millionaire",        blurb: "Hold a million dust.",           check: (s) => s.dust >= 1e6 },
-  { id: "a-bought",  name: "Patron of Motes",    blurb: "Buy 100 Motes by hand.",         check: (s) => (s.tiers[0]?.bought ?? 0) >= 100 },
-  { id: "a-crunch",  name: "Begin Again",        blurb: "Crunch the universe.",           check: (s) => s.crunches >= 1 },
-];
-
-/** Hard ceiling to keep math finite. */
-export const DUST_CLAMP = 1e300;
+/** Tier hues: full spectral ramp, 1 = red end, 8 = violet end. */
+export const TIER_HUES = [4, 32, 52, 110, 165, 205, 250, 285];
