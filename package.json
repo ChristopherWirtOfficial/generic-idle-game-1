@@ -3,17 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "pnpm@11.13.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "flatten": "node scripts/flatten.mjs",
-    "test": "npm run typecheck && npm run test:smoke && npm run test:dom",
-    "test:smoke": "esbuild scripts/smoke.test.ts --bundle --platform=node --format=esm --outfile=.testtmp/smoke.mjs --log-level=error && node .testtmp/smoke.mjs && rm -rf .testtmp",
-    "test:dom": "node scripts/dom-smoke.mjs",
-    "test:ssr": "npm run flatten && node scripts/ssr-smoke.mjs",
-    "sim": "node scripts/pacing-sim.mjs",
-    "ship": "npm run build && npm run flatten && npm run test:ssr && npm run test:dom"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "sim": "node scripts/pacing-sim.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -26,6 +24,7 @@
     "esbuild": "^0.24.0",
     "jsdom": "^29.1.1",
     "typescript": "^5.6.3",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }
