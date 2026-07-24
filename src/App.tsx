@@ -28,6 +28,7 @@ export default function App(): JSX.Element {
   const [banner, setBanner] = useState<string | null>(null);
 
   const beatenShown = useRef<Set<string>>(new Set());
+  const tickedAt = useRef(typeof performance !== "undefined" ? performance.now() : 0);
   const bannerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hiddenAt = useRef<number>(0);
 
@@ -63,6 +64,7 @@ export default function App(): JSX.Element {
       const dt = Math.min(2000, Math.max(0, now - last)) / 1000;
       last = now;
       step(s, dt);
+      tickedAt.current = typeof performance !== "undefined" ? performance.now() : Date.now();
       const p = prog(s);
       if (p.beaten && !beatenShown.current.has(s.scenario)) {
         beatenShown.current.add(s.scenario);
@@ -172,7 +174,7 @@ export default function App(): JSX.Element {
     <div className="app">
       <style>{CSS}</style>
       <div className="display">
-        <Rail state={s} sel={sel} onSelect={onSelect} />
+        <Rail state={s} sel={sel} onSelect={onSelect} tickedAt={tickedAt} />
         <div className="scoreblock">
           <div className="scorenum">{fmt(s.score)}</div>
           <div className="scoresub">
