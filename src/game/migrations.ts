@@ -17,7 +17,7 @@
  *    hold saves at every version you have ever released.
  */
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 type Raw = Record<string, unknown>;
 
@@ -88,10 +88,23 @@ function v2_to_v3(raw: Raw): Raw {
   return raw;
 }
 
+/**
+ * v3 -> v4: banked draws became rerolls. Same earned resource, different
+ * spend — the old name would be a lie about what the number does.
+ */
+function v3_to_v4(raw: Raw): Raw {
+  if ("bankedDraws" in raw) {
+    if (!("rerolls" in raw)) raw.rerolls = raw.bankedDraws;
+    delete raw.bankedDraws;
+  }
+  return raw;
+}
+
 /** Indexed by the version being migrated FROM. */
 const STEPS: Record<number, (raw: Raw) => Raw> = {
   1: v1_to_v2,
   2: v2_to_v3,
+  3: v3_to_v4,
 };
 
 /**

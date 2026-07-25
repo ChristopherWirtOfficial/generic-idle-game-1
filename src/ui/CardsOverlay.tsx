@@ -4,7 +4,12 @@ import { fmt } from "../game/format";
 import { STAT_EFFECT, STAT_NAME, StatGlyph } from "./vocab";
 import type { Card, DrawOffer, Stat } from "../game/types";
 
-interface Props { offer: DrawOffer; onDone: (picked: Card[]) => void; }
+interface Props {
+  offer: DrawOffer;
+  onDone: (picked: Card[]) => void;
+  onReroll: () => void;
+  rerolls: number;
+}
 
 function cardText(c: Card): { big: string; small: string; tc: string | null; stat: Stat | null } {
   if (c.kind === "flywheel") {
@@ -22,7 +27,7 @@ function cardText(c: Card): { big: string; small: string; tc: string | null; sta
   };
 }
 
-export function CardsOverlay({ offer, onDone }: Props): JSX.Element {
+export function CardsOverlay({ offer, onDone, onReroll, rerolls }: Props): JSX.Element {
   const [taken, setTaken] = useState<number[]>([]);
   const left = offer.picks - taken.length;
 
@@ -50,6 +55,17 @@ export function CardsOverlay({ offer, onDone }: Props): JSX.Element {
           })}
         </div>
         <div className="cere-actions">
+          {/* Taking a card first would make the reroll a free re-pick, so it is
+              only offered on an untouched hand: give up what you can see for
+              what you cannot. */}
+          <button
+            className="rerollbtn"
+            disabled={rerolls < 1 || taken.length > 0}
+            onClick={onReroll}
+            aria-label={`reroll the hand, ${rerolls} left`}
+          >
+            reroll <b>{rerolls}</b>
+          </button>
           <span className="cere-count">take {taken.length}/{offer.picks}</span>
           <button className="donebtn" disabled={taken.length !== offer.picks} onClick={() => onDone(taken.map((i) => offer.cards[i]!).filter(Boolean))}>
             KEEP

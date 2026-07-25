@@ -161,8 +161,11 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
             arcRef={(el) => { if (el) arcs.current.set(i, el); else arcs.current.delete(i); }}
           />
           <span className="txt">
-            <span className="count">{known ? fmt(held) : "—"}</span>
-            <span className="sub">
+            {/* Throughput rides the COUNT line — it is the number the count
+                produces, so they belong together. Upgrade levels get their own
+                uncrowded line beneath, where nothing competes for the width. */}
+            <span className="topline">
+              <span className="count">{known ? fmt(held) : "—"}</span>
               <span className="flow">
                 {dead ? (
                   "dead link"
@@ -193,9 +196,8 @@ export function Rail({ state, open, setOpen, amount, onBuy, tickedAt }: Props): 
                   </>
                 )}
               </span>
-              {/* Tableau levels at rest. The one thing you otherwise have to open
-                  every row to see — and the flow line hides when the chain is
-                  long, so these deliberately outlive it. */}
+            </span>
+            <span className="sub">
               {(known || levelsHeld > 0) && (
                 <span className="levels">
                   {(["speed", "value", "cost"] as const).map((stat) => {

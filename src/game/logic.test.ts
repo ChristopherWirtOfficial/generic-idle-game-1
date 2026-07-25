@@ -250,14 +250,14 @@ describe("liquidation telescopes", () => {
 });
 
 describe("draws and picks", () => {
-  it("draws base + banked, and picks add levels", () => {
+  it("always draws BASE_DRAW — rerolls buy another hand, not a wider one", () => {
     const s = freshState(0);
     s.score = D(1e9);
     buyTier(s, 0, 30);
-    s.bankedDraws = 2;
+    s.rerolls = 2;
     s.runScore = D(pickThresholds(s)[0]);
     const offer = rollDraw(s, lcg(7));
-    expect(offer.cards).toHaveLength(BASE_DRAW + 2);
+    expect(offer.cards).toHaveLength(BASE_DRAW);
     expect(offer.picks).toBe(1);
     expect(offer.cards.every((c) => c.kind !== "stat" || (c.levels >= 1 && c.tier >= 0))).toBe(true);
 
@@ -288,7 +288,7 @@ describe("draws and picks", () => {
     const s = freshState(0); // one tier open -> exactly three lines
     s.score = D(1e9);
     buyTier(s, 0, 30);
-    s.bankedDraws = 3; // six cards against three lines
+    s.rerolls = 3; // six cards against three lines
     const cards = rollDraw(s, lcg(11)).cards.filter((c) => c.kind === "stat");
     const counts = new Map<string, number>();
     for (const c of cards) counts.set(`${c.tier}|${c.stat}`, (counts.get(`${c.tier}|${c.stat}`) ?? 0) + 1);
@@ -359,9 +359,9 @@ describe("offline is preparation", () => {
 
   it("caps the bank", () => {
     const s = freshState(0);
-    s.bankedDraws = BANK_CAP - 1;
+    s.rerolls = BANK_CAP - 1;
     applyOffline(s, BANK_MS * 50);
-    expect(s.bankedDraws).toBe(BANK_CAP);
+    expect(s.rerolls).toBe(BANK_CAP);
   });
 });
 

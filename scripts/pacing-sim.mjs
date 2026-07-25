@@ -17,6 +17,12 @@ const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return see
 
 const s = C.freshState(0);
 const SCEN = process.argv[4];
+/**
+ * Minutes of "away" credited per reset, so the sim sees BANKED draws.
+ * It never did before: every constant in this repo was tuned against a
+ * permanent 3-card hand, which is the one draw a returning player never gets.
+ */
+const AWAY_MIN = Number(process.argv[6] ?? 0);
 if (SCEN) C.switchScenario(s, SCEN, 0);
 const log = [];
 let resets = 0, picksTaken = 0, lastResetT = 0, firstPickT = null;
@@ -79,6 +85,7 @@ function buyPass() {
 const seenTier = new Set();
 const seenTierT = new Map();
 const checkpoints = [];
+const handSizes = [];
 let nextReport = 1800;
 let beatenT = null;
 let earlyBuys = 0;
@@ -106,8 +113,14 @@ for (let t = 0; t < HOURS * 3600; t++) {
   const want = pushing ? Math.min(3, 1 + Math.floor(C.prog(s).picks / 60)) : RESET_AT_PICKS;
   if (picks >= want || (picks >= 1 && t - lastResetT > 40 * 60)) {
     if (firstPickT === null) { firstPickT = t; log.push([t, `first reset ready: run ${fmtE(s.runScore)} + liq ${fmtE(liq)}, picks ${picks}`]); }
+    // Credit away-time before rolling, so the draw can actually be a BANKED
+    // one. Without this the sim only ever measures the 3-card hand.
+    if (AWAY_MIN > 0) {
+      s.rerolls = Math.min(C.BANK_CAP, s.rerolls + Math.floor((AWAY_MIN * 60_000) / C.BANK_MS));
+    }
     const slots = slotsOf(s).map((e) => ({ tier: e.tier, stat: e.stat, w: e.w, damp: e.damp ?? 1 }));
     const offer = C.rollDraw(s, rand);
+    handSizes.push(offer.cards.length);
     const rec = { t, slots, offered: offer.cards.map((c) => ({ kind: c.kind, tier: c.tier, stat: c.stat })), ranks: [] };
     draws.push(rec);
     for (let k = 0; k < offer.picks; k++) {
@@ -313,4 +326,10 @@ if (C.shapeWeights) {
     ["floor 0.45 cap 2.2 ", A, 0.45, 2.2],
     [`floor ${F} cap ${K} *`, A, F, K],
   ]);
+}
+
+if (handSizes.length) {
+  const avg = handSizes.reduce((a, b) => a + b, 0) / handSizes.length;
+  const max = Math.max(...handSizes);
+  console.log(`hand size: avg ${avg.toFixed(2)}, max ${max}, draws ${handSizes.length}` + (AWAY_MIN ? ` (away ${AWAY_MIN}m/reset)` : " (no banking)"));
 }

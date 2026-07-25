@@ -31,8 +31,8 @@ export function ResetPanel({ state, onReset }: Props): JSX.Element {
         <div className="kv"><span>this run</span><b>{fmt(state.runScore)}</b></div>
         <div className="kv"><span>+ cash-out (everything fires once)</span><b>{fmt(liq)}</b></div>
         <div className="kv"><span>= counts as</span><b>{fmt(finalRun)}</b></div>
-        {state.bankedDraws > 0 && (
-          <div className="kv"><span>banked draws (from time away)</span><b>+{state.bankedDraws} / {BANK_CAP}</b></div>
+        {state.rerolls > 0 && (
+          <div className="kv"><span>banked draws (from time away)</span><b>+{state.rerolls} / {BANK_CAP}</b></div>
         )}
         <div className="sectionlabel">picks · ladder rises as you take them</div>
         <div className={`threshrow${finalRun.gte(t1) ? " met" : ""}`}><span>1 pick</span><b>{fmt(t1)}</b></div>

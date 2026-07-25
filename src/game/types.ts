@@ -75,8 +75,8 @@ export interface GameState {
   progress: Record<string, ScenarioProgress>;
   /** Pool weights accrued this run: pool[tier][stat]. */
   pool: Record<number, Record<Stat, number>>;
-  /** Banked bonus draw options from time away. */
-  bankedDraws: number;
+  /** Rerolls held, earned by time away. Spent one per reroll. */
+  rerolls: number;
   startedAt: number;
   lastSeen: number;
   runStartedAt: number;

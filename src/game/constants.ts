@@ -11,6 +11,22 @@ export const BANK_CAP = 6;
 export const TRICKLE_S = 60;
 
 export const BASE_DRAW = 3;
+/**
+ * Away time buys REROLLS, not a bigger hand.
+ *
+ * Banking used to add cards, and under the old draw that couldn't run away:
+ * ~48% of cards were duplicates, so nine cards was really four or five distinct
+ * lines. Sampling without replacement removed that accidental brake, and nine
+ * distinct lines on an early run is the entire pool — a menu, not a draw. One
+ * pick out of nine is also pure upside: nothing is given up, so there is no
+ * decision in it.
+ *
+ * A reroll keeps the hand at BASE_DRAW and spends the same earned resource on a
+ * question instead: this hand is in front of you and the next one is not, so is
+ * it good enough? That is a real stake, it costs nothing to read, and it does
+ * not get worse as the pool grows. Depth should buy better cards and more
+ * PICKS — never more options to hold in your head.
+ */
 /** Pick thresholds rise with picks taken: threshold × (1 + a·P)^b. */
 export const THRESH_A = 0.12;
 export const THRESH_B = 2;

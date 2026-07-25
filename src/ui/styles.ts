@@ -50,16 +50,18 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .count { display: block; font-size: 21px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1; }
 .row.empty .count { color: var(--faint); }
 .row.slot .count { color: var(--faint); font-weight: 400; font-size: 15px; }
-.sub { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; min-width: 0; }
-/* Shrink-to-fit, not grow: the levels strip should sit just after the flow
-   text so it stays attached to the tier, rather than drifting to the far edge
-   and reading as part of the buy plate. */
-.flow { flex: 0 1 auto; min-width: 0; font-size: 11.5px; color: var(--dim); line-height: 1.45;
+.topline { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.sub { display: flex; align-items: baseline; margin-top: 3px; min-width: 0; }
+/* Full width now that levels have moved off this line — this is the number the
+   owner asked to see, so it is the last thing that should be truncated. */
+/* Sits beside the count, right of it, and is the only thing here allowed to
+   ellipsise — levels have their own line now and never compete for this width. */
+.flow { flex: 1 1 auto; min-width: 0; text-align: right; font-size: 11.5px; color: var(--dim); line-height: 1.45;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* Levels at rest: quiet enough to ignore, present enough to scan down. Zeros
    stay in place rather than collapsing, so the columns line up row to row. */
-.levels { flex: none; display: flex; gap: 8px; font-size: 9.5px; line-height: 1;
+.levels { flex: none; display: flex; gap: 7px; font-size: 9.5px; line-height: 1;
   color: var(--faint); font-variant-numeric: tabular-nums; }
 .lv { display: inline-flex; align-items: center; gap: 2px; opacity: 0.4; }
 .lv.on { opacity: 1; color: var(--dim); }
@@ -251,6 +253,10 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .playcard:disabled { opacity: 0.45; }
 .ceremony .cere-actions { display: flex; justify-content: center; gap: 12px; align-items: center; }
 .ceremony .cere-count { font-size: 13px; color: var(--dim); }
+.rerollbtn { padding: 12px 18px; border: 1px solid var(--edge); border-radius: 12px;
+  font-size: 12px; letter-spacing: 0.06em; color: var(--dim); }
+.rerollbtn b { color: var(--text); font-weight: 400; }
+.rerollbtn:disabled { opacity: 0.3; }
 .donebtn { padding: 12px 26px; border: 1px solid var(--text); border-radius: 12px; font-size: 14px; letter-spacing: 0.08em; }
 .donebtn:disabled { opacity: 0.4; }
 
@@ -317,6 +323,19 @@ button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
 .modal p { font-size: 13px; color: var(--dim); line-height: 1.55; }
 .modal .mrow { font-size: 14px; margin: 8px 0; }
 .modal button { margin-top: 16px; width: 100%; min-height: 50px; border-radius: 12px; background: var(--card); border: 1px solid var(--edge); font-size: 14px; }
+
+/* Phones: the plate was eating a third of the width, which is what forced the
+   flow line to ellipsise in the first place. */
+@media (max-width: 430px) {
+  .buy { width: 96px; margin-left: 5px; margin-right: 2px; }
+  .display { padding-left: 8px; padding-right: 8px; }
+  /* Tier 1 carries both the widest count and the longest flow, so both give a
+     little rather than the rate getting cut off the end. */
+  .count { font-size: 18px; }
+  .flow { font-size: 10.5px; letter-spacing: -0.01em; }
+  .flow .sep { padding: 0 2px; }
+  .topline { gap: 7px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .mfill { transition: none; }

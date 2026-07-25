@@ -11,7 +11,7 @@ export function freshState(now = Date.now()): GameState {
     tiers: first.tiers.map(() => ({ count: ZERO, bought: 0, phase: 0, cycles: 0 })),
     progress: {},
     pool: {},
-    bankedDraws: 0,
+    rerolls: 0,
     startedAt: now,
     lastSeen: now,
     runStartedAt: now,

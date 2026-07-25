@@ -436,7 +436,8 @@ export function rollDraw(s: GameState, rand: () => number): DrawOffer {
   const liquidated = liquidationValue(s);
   const finalRun = Decimal.min(D(NUM_CLAMP), s.runScore.plus(liquidated));
   const picks = picksFor(s, finalRun);
-  const nCards = BASE_DRAW + s.bankedDraws;
+  // Always the same size. Time away buys rerolls, not a wider hand.
+  const nCards = BASE_DRAW;
   const slots = poolSlots(s);
   const ps = shapeWeights(slots.map((e) => e.w), POOL_ALPHA, POOL_FLOOR, POOL_CAP, slots.map((e) => e.damp));
   const cards: Card[] = [];
@@ -494,7 +495,7 @@ export function doReset(s: GameState, now = Date.now()): void {
   s.runScore = ZERO;
   s.score = ZERO;
   s.pool = {};
-  s.bankedDraws = 0;
+  // Rerolls are NOT cleared: they are an earned resource, not a per-run buff.
   s.runStartedAt = now;
   // Every run begins with one tier 1 already on the wheel — held, not bought:
   // starting units never touch the price ladder or milestones. Hotstart stacks.
@@ -514,7 +515,7 @@ export function switchScenario(s: GameState, id: string, now = Date.now()): void
   s.tiers = defs.map(() => ({ count: ZERO, bought: 0, phase: 0, cycles: 0 }));
   s.runScore = ZERO;
   s.pool = {};
-  s.bankedDraws = 0;
+  s.rerolls = 0;
   s.runStartedAt = now;
   const p = prog(s); // materialize
   s.score = ZERO;

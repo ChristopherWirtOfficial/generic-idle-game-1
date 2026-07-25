@@ -58,6 +58,13 @@ describe("walking v1 to current", () => {
     expect(out.progress.s1.totalScore).toBe("90000000");
   });
 
+  it("carries banked draws over as rerolls", () => {
+    const { raw } = migrateSave({ ...v1(), bankedDraws: 4 });
+    const o = raw as Record<string, any>;
+    expect(o.rerolls).toBe(4);
+    expect("bankedDraws" in o).toBe(false);
+  });
+
   it("leaves bounded quantities as numbers", () => {
     expect(out.tiers[0].bought).toBe(30);
     expect(out.tiers[0].phase).toBe(0.2);

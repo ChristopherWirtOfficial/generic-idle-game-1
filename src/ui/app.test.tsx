@@ -29,7 +29,7 @@ const seed = {
     },
   },
   pool: { 0: { value: 40, speed: 6, cost: 30 } },
-  bankedDraws: 0,
+  rerolls: 0,
   startedAt: Date.now() - 3600_000,
   lastSeen: Date.now() - 5_000,
   runStartedAt: Date.now() - 600_000,

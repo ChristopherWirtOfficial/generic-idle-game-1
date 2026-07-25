@@ -126,7 +126,7 @@ function reviveState(raw: unknown): GameState {
   s.scenario = def.id;
   s.score = posDec(r.score) ?? s.score;
   s.runScore = posDec(r.runScore) ?? ZERO;
-  s.bankedDraws = Math.min(BANK_CAP, Math.floor(posNum(r.bankedDraws) ?? 0));
+  s.rerolls = Math.min(BANK_CAP, Math.floor(posNum(r.rerolls) ?? 0));
   s.startedAt = posNum(r.startedAt) ?? s.startedAt;
   s.lastSeen = posNum(r.lastSeen) ?? 0;
   s.runStartedAt = posNum(r.runStartedAt) ?? s.startedAt;
@@ -167,8 +167,8 @@ export async function eraseSave(): Promise<void> {
  * while nobody is deciding.
  */
 export function applyOffline(s: GameState, awayMs: number): OfflineReport {
-  const before = s.bankedDraws;
-  s.bankedDraws = Math.min(BANK_CAP, s.bankedDraws + Math.floor(awayMs / BANK_MS));
+  const before = s.rerolls;
+  s.rerolls = Math.min(BANK_CAP, s.rerolls + Math.floor(awayMs / BANK_MS));
   const trickle = scoreRate(s).times(TRICKLE_S);
   s.score = s.score.plus(trickle);
   s.runScore = s.runScore.plus(trickle);
@@ -180,7 +180,7 @@ export function applyOffline(s: GameState, awayMs: number): OfflineReport {
     st.phase = (st.phase + (awayMs / 1000) / T) % 1;
   }
   clampState(s);
-  return { awayMs, bankedGained: s.bankedDraws - before, trickle };
+  return { awayMs, bankedGained: s.rerolls - before, trickle };
 }
 
 export async function loadGame(now = Date.now()): Promise<{ state: GameState; offline: OfflineReport | null }> {

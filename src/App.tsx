@@ -124,6 +124,19 @@ export default function App(): JSX.Element {
     setOffer(rollDraw(s, Math.random));
   }, []);
 
+  /**
+   * Spend a reroll: same pool, same odds, a different hand. Charged BEFORE the
+   * roll so a reroll you were shown is always one you actually paid for.
+   */
+  const onReroll = useCallback(() => {
+    const s = stateRef.current;
+    if (!s || s.rerolls < 1) return;
+    s.rerolls -= 1;
+    setOffer(rollDraw(s, Math.random));
+    void persist(s);
+    bump();
+  }, [bump]);
+
   const onCeremonyDone = useCallback((picked: Card[]) => {
     const s = stateRef.current;
     if (!s) return;
@@ -134,7 +147,7 @@ export default function App(): JSX.Element {
     setOpen(null);
     void persist(s);
     bump();
-  }, [bump]);
+  }, [bump, offer]);
 
   const onSwitch = useCallback((id: string) => {
     const s = stateRef.current;
@@ -226,7 +239,7 @@ export default function App(): JSX.Element {
         <QuantityBar amount={amount} setAmount={setAmount} />
         <TabBar tab={tab} setTab={setTab} />
       </div>
-      {offer && <CardsOverlay offer={offer} onDone={onCeremonyDone} />}
+      {offer && <CardsOverlay offer={offer} onDone={onCeremonyDone} onReroll={onReroll} rerolls={s.rerolls} />}
       {offline && !offer && <OfflineModal report={offline} onClose={() => setOffline(null)} />}
     </div>
   );
